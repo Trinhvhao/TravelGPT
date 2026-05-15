@@ -1,0 +1,8 @@
+{"sessionId":"5fff02","location":"chat/page.tsx:582","message":"HYP_WELCOME_AUTO_ADD mount check","data":{"hasWelcome":false,"messagesLength":0,"willAddWelcome":true},"timestamp":1778751458742,"hypothesisId":"HYP_WELCOME_AUTO_ADD"}
+{"sessionId":"5fff02","location":"chat/page.tsx:584","message":"HYP_WELCOME_AUTO_ADD CONFIRMED - welcome added on mount","data":{"messagesLengthAfter":1},"timestamp":1778751458743,"hypothesisId":"HYP_WELCOME_AUTO_ADD"}
+{"sessionId":"5fff02","location":"chat/page.tsx:582","message":"HYP_WELCOME_AUTO_ADD mount check","data":{"hasWelcome":false,"messagesLength":0,"willAddWelcome":true},"timestamp":1778751469068,"hypothesisId":"HYP_WELCOME_AUTO_ADD"}
+{"sessionId":"5fff02","location":"chat/page.tsx:584","message":"HYP_WELCOME_AUTO_ADD CONFIRMED - welcome added on mount","data":{"messagesLengthAfter":1},"timestamp":1778751469068,"hypothesisId":"HYP_WELCOME_AUTO_ADD"}
+{"sessionId":"5fff02","location":"chat/page.tsx:629","message":"HYP_SUBMIT_NO_WELCOME check - messages state on submit","data":{"currentLength":1,"hasWelcome":true},"timestamp":1778751486668,"hypothesisId":"HYP_SUBMIT_NO_WELCOME"}
+{"sessionId":"5fff02","location":"chat/page.tsx:584","message":"FIX_VERIFY mount - messages length","data":{"messagesLength":0},"timestamp":1778751720951,"hypothesisId":"FIX_VERIFY"}
+{"sessionId":"5fff02","location":"chat/page.tsx:584","message":"FIX_VERIFY mount - messages length","data":{"messagesLength":0},"timestamp":1778751730636,"hypothesisId":"FIX_VERIFY"}
+{"sessionId":"5fff02","location":"chat/page.tsx:631","message":"FIX_VERIFY submit - added welcome for first message","data":{"messagesLengthBefore":0},"timestamp":1778751736690,"hypothesisId":"FIX_VERIFY"}

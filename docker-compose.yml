@@ -1,0 +1,113 @@
+version: '3.8'
+
+services:
+  # ============= Backend =============
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: travelgpt-backend
+    restart: unless-stopped
+    ports:
+      - "3008:8000"
+    environment:
+      - DATABASE_URL=postgresql://travelgpt:travelgpt@postgres:5432/travelgpt
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-supersecretkey123}
+      - AICLIEN2API_KEY=${AICLIEN2API_KEY:-}
+      - MEM0_API_KEY=${MEM0_API_KEY:-}
+      - APP_DEBUG=true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - travelgpt-network
+
+  # ============= Frontend =============
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: travelgpt-frontend
+    restart: unless-stopped
+    ports:
+      - "3005:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - NODE_ENV=production
+    depends_on:
+      - backend
+    networks:
+      - travelgpt-network
+
+  # ============= PostgreSQL =============
+  postgres:
+    image: postgres:15-alpine
+    container_name: travelgpt-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=travelgpt
+      - POSTGRES_PASSWORD=travelgpt
+      - POSTGRES_DB=travelgpt
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "3006:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U travelgpt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - travelgpt-network
+
+  # ============= Redis =============
+  redis:
+    image: redis:7-alpine
+    container_name: travelgpt-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "3007:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - travelgpt-network
+
+  # ============= Nginx (Reverse Proxy) =============
+  nginx:
+    image: nginx:alpine
+    container_name: travelgpt-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - travelgpt-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  travelgpt-network:
+    driver: bridge

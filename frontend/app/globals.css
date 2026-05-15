@@ -1,0 +1,166 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   TRAVELGPT — VIETRAVEL DESIGN SYSTEM
+   Based on docs/DESIGN_SYSTEM.md
+────────────────────────────────────────────────────────────────────────────── */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Google Fonts ──────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Mulish:wght@400;500;600;700;800&display=swap');
+
+@layer base {
+  :root {
+    /* ── Vietravel Primary Colors ─────────────────────────────────────────── */
+    --primary-hsl:        219 91% 37%;   /* #0046C1 — Cobalt Blue */
+    --primary:            #0046C1;
+    --primary-hover:       #002540;
+    --primary-foreground:  #FFFFFF;
+
+    /* ── Secondary (Light Blue Background) ───────────────────────────────── */
+    --secondary-hsl:      207 100% 90%;  /* #D9EEFF */
+    --secondary:           #D9EEFF;
+    --secondary-foreground: #0046C1;
+
+    /* ── Accent (Bright Azure) ───────────────────────────────────────────── */
+    --accent-hsl:         207 100% 56%;  /* #0391FF */
+    --accent:              #0391FF;
+    --accent-foreground:   #FFFFFF;
+
+    /* ── Muted (Neutral Grays) ───────────────────────────────────────────── */
+    --muted-hsl:          0 0% 97%;      /* #F7F7F7 */
+    --muted:               #F7F7F7;
+    --muted-foreground:   #636363;
+
+    /* ── Semantic Colors ─────────────────────────────────────────────────── */
+    --destructive-hsl:    0 80% 50%;     /* #ED1D24 */
+    --destructive:         #ED1D24;
+    --destructive-foreground: #FFFFFF;
+
+    --success-hsl:        120 59% 63%;    /* #77DD77 */
+    --success:             #77DD77;
+    --success-foreground:  #FFFFFF;
+
+    --warning-hsl:         48 100% 47%;   /* #F8C700 */
+    --warning:             #F8C700;
+    --warning-foreground:  #000E1A;
+
+    /* ── Surface & Foreground ────────────────────────────────────────────── */
+    --background:         #FFFFFF;
+    --foreground:        #000E1A;         /* Deep Navy */
+
+    --card:               #FFFFFF;
+    --card-foreground:    #000E1A;
+
+    --popover:            #FFFFFF;
+    --popover-foreground: #000E1A;
+
+    /* ── Borders & Inputs ───────────────────────────────────────────────── */
+    --border:             #DDDDDD;
+    --input:              #F7F7F7;
+    --ring:               #0046C1;
+
+    /* ── Radius ──────────────────────────────────────────────────────────── */
+    --radius: 0px;
+  }
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--border);
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Mulish', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--foreground);
+    background-color: var(--background);
+  }
+
+  /* ── Headings ───────────────────────────────────────────────────────────── */
+  h1, .h1 { font-size: 28px; line-height: 36px; font-weight: 700; color: var(--foreground); letter-spacing: 0px; }
+  h2, .h2 { font-size: 18px; line-height: 26px; font-weight: 700; color: var(--foreground); }
+  h3, .h3 { font-size: 18px; line-height: 26px; font-weight: 700; color: var(--foreground); }
+
+  /* ── Links ──────────────────────────────────────────────────────────────── */
+  a {
+    color: inherit;
+    font-size: 16px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: color 150ms ease;
+  }
+  a:hover { color: #0046C1; }
+  a:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* ── Custom Scrollbar ──────────────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #DDDDDD; }
+  ::-webkit-scrollbar-thumb:hover { background: #999999; }
+
+  /* ── Selection ─────────────────────────────────────────────────────────── */
+  ::selection { background: #D9EEFF; color: #000E1A; }
+
+  /* ── Focus ─────────────────────────────────────────────────────────────── */
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+}
+
+/* ── Component Layer ───────────────────────────────────────────────────────── */
+
+@layer components {
+  /* ── Typography Scale ──────────────────────────────────────────────────── */
+  .text-display   { @apply text-[1.75rem] leading-[36px] font-bold tracking-tight; }
+  .text-heading-1 { @apply text-[1.75rem] leading-[36px] font-bold tracking-tight; }
+  .text-heading-2 { @apply text-[1.125rem] leading-[26px] font-bold; }
+  .text-heading-3 { @apply text-[1.125rem] leading-[26px] font-bold; }
+  .text-body-lg   { @apply text-[1rem] leading-[24px] font-medium; }
+  .text-body      { @apply text-[1rem] leading-[24px] font-medium; }
+  .text-body-sm   { @apply text-[0.875rem] leading-[20px] font-normal; }
+  .text-metadata  { @apply text-[0.75rem] leading-[16px] font-normal; }
+
+  /* ── Layout Containers ──────────────────────────────────────────────────── */
+  .container-page {
+    @apply max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  /* ── Slide-up Animation ────────────────────────────────────────────────── */
+  .animate-slide-up {
+    animation: slide-up 0.4s ease-out forwards;
+  }
+
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Fade-in Animation ─────────────────────────────────────────────────── */
+  .animate-fade-in {
+    animation: fade-in 0.2s ease-out forwards;
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+}
+
+/* ── Utilities Layer ──────────────────────────────────────────────────────── */
+
+@layer utilities {
+}

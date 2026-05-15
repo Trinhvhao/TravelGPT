@@ -1,0 +1,21 @@
+{
+  "name": "travelgpt-backend",
+  "version": "1.0.0",
+  "description": "AI Travel Agent Backend",
+  "scripts": {
+    "dev": "uvicorn app.main:app --reload",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "npx ts-node prisma/seed.ts",
+    "db:studio": "prisma studio"
+  },
+  "devDependencies": {
+    "@prisma/client": "^5.17.0",
+    "@types/node": "^20.11.0",
+    "prisma": "^5.17.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.3"
+  }
+}
