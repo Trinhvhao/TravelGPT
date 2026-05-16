@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { bookingApi } from "@/lib/booking-api";
@@ -32,6 +32,8 @@ import {
   Loader2,
   Ticket,
   Shield,
+  CreditCard,
+  CheckCircle2,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { cn } from "@/lib/utils";
@@ -98,7 +100,6 @@ function CancelModal({
           <ModalTitle>Hủy đặt tour</ModalTitle>
         </ModalHeader>
         <ModalBody className="space-y-5">
-          {/* Warning */}
           <div className="flex items-start gap-3 p-4 rounded-xl bg-[#FEF2F2] border border-[#FEE2E2]">
             <AlertTriangle className="w-5 h-5 text-[#DC2626] flex-shrink-0 mt-0.5" />
             <div className="text-sm text-[#000E1A]">
@@ -108,8 +109,6 @@ function CancelModal({
               </p>
             </div>
           </div>
-
-          {/* Booking info */}
           <div className="p-4 rounded-xl bg-[#F7F7F7] border border-[#DDDDDD] space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-[#636363]">Mã booking</span>
@@ -132,8 +131,6 @@ function CancelModal({
               </span>
             </div>
           </div>
-
-          {/* Refund info */}
           <div className="p-4 rounded-xl bg-[#F0FDF4] border border-[#BBF7D0]">
             <p className="text-xs font-semibold text-[#16A34A] mb-2">Chính sách hoàn tiền</p>
             <div className="text-xs text-[#636363] space-y-1">
@@ -143,8 +140,6 @@ function CancelModal({
               <p>• Hủy trong ngày: Không hoàn tiền</p>
             </div>
           </div>
-
-          {/* Confirm input */}
           <div className="space-y-2">
             <label className="text-sm font-semibold text-[#000E1A]">
               Nhập mã booking để xác nhận hủy
@@ -157,8 +152,6 @@ function CancelModal({
               className="w-full px-4 py-3 rounded-xl border border-[#E5E7EB] bg-white text-sm text-[#000E1A] focus:outline-none focus:ring-2 focus:ring-[#0046C1]/20 focus:border-[#0046C1] transition-all font-mono text-center uppercase tracking-wider"
             />
           </div>
-
-          {/* Actions */}
           <div className="flex gap-3 pt-2">
             <Button variant="outline" onClick={onClose} className="flex-1 border-[#DDDDDD]" disabled={confirming}>
               Giữ đơn
@@ -182,17 +175,110 @@ function CancelModal({
   );
 }
 
+// ─── Payment Section ────────────────────────────────────────────────────────────
+function PaymentSection({
+  booking,
+  onPaid,
+}: {
+  booking: Booking;
+  onPaid: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+
+  const handlePay = async () => {
+    setLoading(true);
+    try {
+      const result = await bookingApi.createCheckout(booking.id);
+      if (result.checkout_url) {
+        window.location.href = result.checkout_url;
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("Stripe is not configured")) {
+        toast.error("Thanh toán Stripe chưa được cấu hình. Vui lòng liên hệ hỗ trợ.");
+      } else {
+        toast.error(msg || "Không thể tạo thanh toán. Vui lòng thử lại.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-[#636363]">
+        Thanh toán an toàn qua Stripe. Hỗ trợ thẻ Visa, Mastercard, JCB.
+      </p>
+      <Button
+        onClick={handlePay}
+        disabled={loading}
+        className="w-full h-12 font-bold gap-2 shadow-md"
+        style={{
+          background: "linear-gradient(135deg, #6772E5 0%, #9B59B6 100%)",
+          borderRadius: "12px",
+          border: "none",
+        }}
+      >
+        {loading ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <CreditCard className="w-4 h-4" />
+        )}
+        Thanh toán với Stripe
+      </Button>
+      <p className="text-[10px] text-center text-[#636363]">
+        🔒 Bảo mật thanh toán bởi Stripe
+      </p>
+    </div>
+  );
+}
+
+// ─── Success Banner ─────────────────────────────────────────────────────────────
+function PaymentSuccessBanner({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <div className="flex items-center gap-3 p-4 rounded-xl bg-[#F0FDF4] border border-[#BBF7D0] animate-[slide-up_0.3s_ease-out]">
+      <CheckCircle2 className="w-8 h-8 text-[#22C55E] flex-shrink-0" />
+      <div className="flex-1">
+        <p className="font-bold text-[#16A34A] text-sm">Thanh toán thành công!</p>
+        <p className="text-xs text-[#636363]">Đơn đặt tour của bạn đã được xác nhận. Cảm ơn bạn đã sử dụng TravelGPT.</p>
+      </div>
+      <button onClick={onDismiss} className="text-[#636363] hover:text-[#000E1A] transition-colors cursor-pointer">
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
 // ─── Main Page ──────────────────────────────────────────────────────────────────
-export default function BookingDetailPage() {
+function BookingDetailContent() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const bookingCode = params.booking_code as string;
+  const paidParam = searchParams.get("paid");
+  const cancelledParam = searchParams.get("cancelled");
+
   const { isAuthenticated, isLoading } = useAuth();
 
   const [booking, setBooking] = useState<Booking | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelModal, setCancelModal] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  // Show success banner if redirected from Stripe
+  useEffect(() => {
+    if (paidParam === "true") {
+      setShowSuccess(true);
+      // Clean URL
+      router.replace(`/bookings/${bookingCode}`);
+    }
+    if (cancelledParam === "true") {
+      toast.error("Bạn đã hủy thanh toán. Có thể thanh toán lại bất kỳ lúc nào.");
+      router.replace(`/bookings/${bookingCode}`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -202,7 +288,7 @@ export default function BookingDetailPage() {
     if (isAuthenticated) {
       fetchBooking();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, isLoading]);
 
   const fetchBooking = async () => {
@@ -260,12 +346,20 @@ export default function BookingDetailPage() {
       : (booking.tour.images[0] as { url: string }).url);
 
   const canCancel = booking.status === "PENDING" || booking.status === "CONFIRMED";
+  const canPay = booking.payment_status === "UNPAID" && (booking.status === "PENDING");
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FAFAFA]">
       <Navbar />
 
       <main className="flex-1">
+        {/* Success Banner */}
+        {showSuccess && (
+          <div className="container-page pt-6">
+            <PaymentSuccessBanner onDismiss={() => setShowSuccess(false)} />
+          </div>
+        )}
+
         {/* Header */}
         <div className="bg-[#0046C1] pt-12 pb-10 px-4">
           <div className="container-page">
@@ -322,28 +416,12 @@ export default function BookingDetailPage() {
                 <div className="p-6 space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     {[
-                      {
-                        icon: Calendar,
-                        label: "Ngày khởi hành",
-                        value: booking.departure_date ? formatDate(booking.departure_date) : "—",
-                      },
-                      {
-                        icon: Clock,
-                        label: "Thời gian",
-                        value: booking.tour?.duration || "—",
-                      },
-                      {
-                        icon: MapPin,
-                        label: "Điểm đến",
-                        value: booking.tour?.region || booking.tour?.destination || "—",
-                      },
-                      {
-                        icon: Users,
-                        label: "Số khách",
-                        value: `${booking.num_adults ?? 0} người lớn${(booking.num_children ?? 0) > 0 ? `, ${booking.num_children} trẻ em` : ""}`,
-                      },
+                      { Icon: Calendar, label: "Ngày khởi hành", value: booking.departure_date ? formatDate(booking.departure_date) : "—" },
+                      { Icon: Clock, label: "Thời gian", value: booking.tour?.duration || "—" },
+                      { Icon: MapPin, label: "Điểm đến", value: booking.tour?.region || booking.tour?.destination || "—" },
+                      { Icon: Users, label: "Số khách", value: `${booking.num_adults ?? 0} người lớn${(booking.num_children ?? 0) > 0 ? `, ${booking.num_children} trẻ em` : ""}` },
                     ].map((item) => {
-                      const Icon = item.icon;
+                      const Icon = item.Icon;
                       return (
                         <div key={item.label} className="flex items-start gap-3">
                           <div className="w-10 h-10 rounded-xl bg-[#F7F7F7] flex items-center justify-center flex-shrink-0">
@@ -374,11 +452,11 @@ export default function BookingDetailPage() {
                 </div>
                 <div className="p-6 space-y-3">
                   {[
-                    { icon: UserIcon, label: "Họ tên", value: booking.contact_name },
-                    { icon: Mail, label: "Email", value: booking.contact_email },
-                    { icon: Phone, label: "Điện thoại", value: booking.contact_phone || "—" },
+                    { Icon: UserIcon, label: "Họ tên", value: booking.contact_name },
+                    { Icon: Mail, label: "Email", value: booking.contact_email },
+                    { Icon: Phone, label: "Điện thoại", value: booking.contact_phone || "—" },
                   ].map((item) => {
-                    const Icon = item.icon;
+                    const Icon = item.Icon;
                     return (
                       <div key={item.label} className="flex items-center gap-3">
                         <Icon className="w-4 h-4 text-[#0046C1] flex-shrink-0" />
@@ -430,8 +508,27 @@ export default function BookingDetailPage() {
                       Thanh toán ngày {formatDate(booking.payment_date)}
                     </div>
                   )}
+                  {booking.payment_method && (
+                    <div className="text-xs text-[#636363] text-center">
+                      Phương thức: <span className="font-medium text-[#0046C1]">
+                        {booking.payment_method === "stripe" ? "Thẻ (Stripe)" :
+                         booking.payment_method === "vnpay" ? "VNPay" :
+                         booking.payment_method === "bank_transfer" ? "Chuyển khoản" : booking.payment_method}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </Card>
+
+              {/* Stripe Payment Button */}
+              {canPay && (
+                <Card className="border border-[#DDDDDD]">
+                  <div className="p-6 space-y-4">
+                    <h3 className="font-bold text-[#000E1A]">Thanh toán ngay</h3>
+                    <PaymentSection booking={booking} onPaid={fetchBooking} />
+                  </div>
+                </Card>
+              )}
 
               {/* Actions */}
               <Card className="border border-[#DDDDDD]">
@@ -482,14 +579,24 @@ export default function BookingDetailPage() {
       <Footer />
 
       {/* Cancel Modal */}
-      {booking && (
-        <CancelModal
-          booking={booking}
-          open={cancelModal}
-          onClose={() => setCancelModal(false)}
-          onConfirm={handleCancel}
-        />
-      )}
+      <CancelModal
+        booking={booking}
+        open={cancelModal}
+        onClose={() => setCancelModal(false)}
+        onConfirm={handleCancel}
+      />
     </div>
+  );
+}
+
+export default function BookingDetailPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
+        <Spinner size="lg" />
+      </div>
+    }>
+      <BookingDetailContent />
+    </Suspense>
   );
 }

@@ -85,6 +85,10 @@ export interface ChatMessage {
   content: string;
   created_at?: string;
   metadata?: Record<string, unknown>;
+  /** User attachments (images sent by user) */
+  attachments?: ImageAttachment[];
+  /** AI content blocks (structured rich content) */
+  content_blocks?: ContentBlock[];
 }
 
 export interface ChatSuggestion {
@@ -371,4 +375,108 @@ export interface ConversationSummary {
   createdAt: string;
   updatedAt: string;
   tags: string[];
+}
+
+// ============================================================
+// Tool Calling / AI Agent Types
+// ============================================================
+
+export type ToolStatus =
+  | "idle"
+  | "searching_tours"
+  | "fetching_tour_details"
+  | "checking_bookings"
+  | "cancelling_booking"
+  | "searching_web"
+  | "synthesizing";
+
+export interface WebSearchResult {
+  site: "traveloka" | "booking" | "viator";
+  title: string;
+  description: string;
+  url: string;
+  price?: string;
+  rating?: number;
+  location?: string;
+}
+
+export interface ToolResults {
+  /** Tour results from search_tours or get_tour_details tool */
+  tours?: WebSearchResult[];
+  /** Web search results from web_search_travel tool */
+  webResults?: WebSearchResult[];
+  /** Whether the AI is currently executing a tool (streaming) */
+  toolStatus?: ToolStatus;
+  /** Intent label shown while tool is running */
+  toolLabel?: string;
+}
+
+// ============================================================
+// Rich Content Blocks (AI → User)
+// ============================================================
+
+export interface ContentBlockText {
+  type: "text";
+  content: string;
+}
+
+export interface ContentBlockImage {
+  type: "image";
+  url: string;
+  caption?: string;
+}
+
+export interface ContentBlockGallery {
+  type: "gallery";
+  images: Array<{ url: string; caption?: string }>;
+}
+
+export interface ContentBlockTable {
+  type: "table";
+  headers: string[];
+  rows: string[][];
+}
+
+export interface ContentBlockCardGrid {
+  type: "card_grid";
+  cards: Array<{ title: string; body: string; icon?: string }>;
+}
+
+export interface ContentBlockTimeline {
+  type: "timeline";
+  items: Array<{ day?: string; title: string; description?: string; icon?: string }>;
+}
+
+export interface ContentBlockStats {
+  type: "stats";
+  items: Array<{ icon?: string; label: string; value: string }>;
+}
+
+export interface ContentBlockAlert {
+  type: "alert";
+  variant: "info" | "warning" | "success" | "error";
+  content: string;
+  title?: string;
+}
+
+export type ContentBlock =
+  | ContentBlockText
+  | ContentBlockImage
+  | ContentBlockGallery
+  | ContentBlockTable
+  | ContentBlockCardGrid
+  | ContentBlockTimeline
+  | ContentBlockStats
+  | ContentBlockAlert;
+
+// ============================================================
+// Image Attachments (User → AI)
+// ============================================================
+
+export interface ImageAttachment {
+  id: string;
+  url: string;
+  filename?: string;
+  size?: number;
+  mimeType?: string;
 }

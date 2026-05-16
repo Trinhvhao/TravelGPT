@@ -4,24 +4,27 @@ import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@/types";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { Bot, User, Sparkles, ThumbsUp, ThumbsDown, Copy, Check, Bookmark, BookmarkCheck, MoreHorizontal, Edit2 } from "lucide-react";
+import {
+  Bot,
+  User,
+  Sparkles,
+  ThumbsUp,
+  ThumbsDown,
+  Copy,
+  Check,
+  Bookmark,
+  BookmarkCheck,
+  MoreHorizontal,
+  Edit2,
+  Loader2,
+  Globe,
+  X,
+} from "lucide-react";
 import { useChatStore, CHAT_PRIMARY, CHAT_ACCENT, CHAT_SURFACE_LIGHT, CHAT_GRAY } from "@/stores/chat-store";
 import toast from "react-hot-toast";
-
-// ─── Render content with **bold** markdown ─────────────────────────────────────
-function renderContent(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return (
-        <span key={i} className="font-bold" style={{ color: CHAT_PRIMARY }}>
-          {part.slice(2, -2)}
-        </span>
-      );
-    }
-    return <span key={i}>{part}</span>;
-  });
-}
+import { renderContent } from "@/lib/render-content";
+import { renderContentBlocks } from "@/components/chat/rich-content-blocks";
+import type { ContentBlock, ImageAttachment } from "@/types/chat";
 
 // ─── ChatMessageItem ─────────────────────────────────────────────────────────────
 interface ChatMessageItemProps {
@@ -29,9 +32,18 @@ interface ChatMessageItemProps {
   onRetry?: () => void;
   isFailed?: boolean;
   isLast?: boolean;
+  toolStatus?: string;
+  toolLabel?: string;
 }
 
-export function ChatMessageItem({ message, onRetry, isFailed = false, isLast }: ChatMessageItemProps) {
+export function ChatMessageItem({
+  message,
+  onRetry,
+  isFailed = false,
+  isLast,
+  toolStatus,
+  toolLabel,
+}: ChatMessageItemProps) {
   const isUser = message.role === "user";
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -211,6 +223,20 @@ export function ChatMessageItem({ message, onRetry, isFailed = false, isLast }: 
               </div>
             )}
 
+            {/* Tool status indicator */}
+            {toolStatus && toolStatus !== "idle" && toolLabel && (
+              <div
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full mb-2"
+                style={{ backgroundColor: "#EEF6FF", color: CHAT_PRIMARY }}
+                role="status"
+                aria-label={toolLabel}
+              >
+                <Loader2 className="w-3 h-3 animate-spin flex-shrink-0" />
+                <span>{toolLabel}</span>
+                <Globe className="w-3 h-3 flex-shrink-0" aria-hidden="true" />
+              </div>
+            )}
+
             {/* Intent badge */}
             {!isUser && message.metadata && typeof message.metadata.intent === "string" ? (
               <div
@@ -221,13 +247,35 @@ export function ChatMessageItem({ message, onRetry, isFailed = false, isLast }: 
                   borderRadius: "20px",
                 }}
               >
-                <Sparkles className="w-3 w-3" />
+                <Sparkles className="w-3 h-3" />
                 {String(message.metadata.intent).replace(/_/g, " ")}
               </div>
             ) : null}
 
             {/* Content */}
             {renderContent(message.content)}
+
+            {/* Content blocks (rich structured content from AI) */}
+            {!isUser && message.content_blocks && message.content_blocks.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {renderContentBlocks(message.content_blocks)}
+              </div>
+            )}
+
+            {/* User image attachments */}
+            {isUser && message.attachments && message.attachments.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {message.attachments.map((att) => (
+                  <div key={att.id} className="relative rounded-xl overflow-hidden" style={{ width: 120, height: 90 }}>
+                    <img
+                      src={att.url}
+                      alt={att.filename ?? "Attachment"}
+                      className="w-full h-full object-cover rounded-xl"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Reaction indicator */}
             {reaction && !isUser && (

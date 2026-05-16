@@ -14,6 +14,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { TourCardSkeleton } from "@/components/ui/skeleton";
 import Navbar from "@/components/layout/navbar";
 import Footer from "@/components/layout/footer";
+import { DestinationShowcase } from "@/components/tour/destination-showcase";
+import { DealsSection } from "@/components/tour/deals-section";
+import { TestimonialsSection } from "@/components/tour/testimonials-section";
 import {
   Search,
   SlidersHorizontal,
@@ -29,6 +32,10 @@ import {
   TrendingUp,
   Map,
   Award,
+  Shield,
+  Headphones,
+  Heart,
+  Users,
 } from "lucide-react";
 
 // ─── Design Tokens ──────────────────────────────────────────────────────────────
@@ -55,6 +62,96 @@ const CATEGORIES = [
   { value: "adventure", label: "Mạo hiểm", color: "#FF6B35" },
   { value: "nature", label: "Thiên nhiên", color: "#2DC653" },
 ];
+
+// ─── Why Us Section ─────────────────────────────────────────────────────────────
+function WhyUsSection() {
+  const items = [
+    { icon: Map, value: "500+", label: "Tour du lịch", color: "#EDE9FE" },
+    { icon: Users, value: "50K+", label: "Khách hàng", color: "#D9EEFF" },
+    { icon: Star, value: "4.9/5", label: "Đánh giá TB", color: "#FEF3C7" },
+    { icon: Headphones, value: "24/7", label: "Hỗ trợ", color: "#DCFCE7" },
+  ];
+  return (
+    <section className="py-12 bg-white border-t border-b border-[#EEEEEE]">
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+          {items.map((item) => {
+            const Icon = item.icon;
+            return (
+              <div key={item.label} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-[#F7F7F7] transition-colors">
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+                  style={{ backgroundColor: item.color }}
+                >
+                  <Icon className="w-6 h-6" style={{ color: PRIMARY }} />
+                </div>
+                <div>
+                  <p className="text-2xl font-extrabold text-[#000E1A]">{item.value}</p>
+                  <p className="text-[13px] text-[#636363]">{item.label}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Newsletter CTA ─────────────────────────────────────────────────────────────
+function NewsletterCTA() {
+  const [email, setEmail] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+    setSubmitted(true);
+    setTimeout(() => { setEmail(""); setSubmitted(false); }, 3000);
+  };
+
+  return (
+    <section
+      className="py-16"
+      style={{
+        background: `linear-gradient(135deg, ${PRIMARY} 0%, ${ACCENT} 100%)`,
+      }}
+    >
+      <div className="max-w-[600px] mx-auto px-4 text-center">
+        <Heart className="w-10 h-10 text-white/80 mx-auto mb-4" />
+        <h2 className="text-2xl md:text-3xl font-extrabold text-white mb-3">
+          Nhận ưu đãi độc quyền
+        </h2>
+        <p className="text-white/80 mb-8 text-[15px]">
+          Đăng ký email để nhận các deal hot, tour giảm giá và cập nhật điểm đến mới nhất.
+        </p>
+        {submitted ? (
+          <div className="flex items-center justify-center gap-2 text-white font-bold text-lg">
+            <Shield className="w-6 h-6" />
+            Cảm ơn bạn! Đã đăng ký thành công.
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="flex gap-3 max-w-md mx-auto">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Nhập email của bạn"
+              className="flex-1 h-12 px-5 rounded-xl text-[15px] text-[#000E1A] placeholder:text-[#999999] focus:outline-none focus:ring-2 focus:ring-white/50"
+              required
+            />
+            <button
+              type="submit"
+              className="h-12 px-6 rounded-xl bg-white text-[#0046C1] font-bold text-[14px] hover:bg-[#F7F7F7] transition-colors shadow-lg cursor-pointer whitespace-nowrap"
+            >
+              Đăng ký
+            </button>
+          </form>
+        )}
+      </div>
+    </section>
+  );
+}
 
 // ─── Stats Bar ──────────────────────────────────────────────────────────────────
 const STATS = [
@@ -731,6 +828,12 @@ function SearchPageContent() {
           </div>
         </div>
 
+        {/* ── Destination Showcase ── */}
+        <DestinationShowcase />
+
+        {/* ── Deals Section ── */}
+        <DealsSection />
+
         {/* ── Featured Tours ── */}
         {!loading && featuredTours.length > 0 && !hasActiveFilters && (
           <section className="py-12">
@@ -920,6 +1023,15 @@ function SearchPageContent() {
         onChange={(f) => setFilters((prev) => ({ ...prev, ...f }))}
         onClear={() => { setFilters({ sort_by: "rating", sort_order: "desc", page: 1, page_size: 12 }); setSearch(""); }}
       />
+
+      {/* ── Testimonials ── */}
+      <TestimonialsSection />
+
+      {/* ── Why Us ── */}
+      <WhyUsSection />
+
+      {/* ── Newsletter CTA ── */}
+      <NewsletterCTA />
 
       <Footer />
     </div>

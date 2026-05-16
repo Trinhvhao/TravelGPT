@@ -158,7 +158,7 @@ export function BookingForm({ tour, onSuccess }: BookingFormProps) {
           <Button variant="secondary" onClick={() => router.push("/bookings")}>
             Xem danh sách
           </Button>
-          <Button onClick={() => router.push(`/bookings?code=${bookingCode}`)}>
+          <Button onClick={() => router.push(`/bookings/${bookingCode}`)}>
             Thanh toán
           </Button>
         </div>

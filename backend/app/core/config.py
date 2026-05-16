@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_file: Optional[str] = None
 
+    # Stripe Payment
+    stripe_secret_key: str = ""
+    stripe_publishable_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_currency: str = "vnd"
+
     # App
     app_name: str = "TravelGPT API"
     app_debug: bool = True

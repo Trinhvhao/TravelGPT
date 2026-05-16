@@ -1004,215 +1004,136 @@ async def send_message_stream(
             # Detect intent (fast, non-LLM)
             intent, extracted_params = intent_detector.detect(request.message)
 
-            # Build messages for LLM
+            # Build user context from preferences
             pref = recommendation_engine.get_user_preference(user_id)
             context_msg = ""
             if pref.preferred_destinations:
                 context_msg = f"\n[User preferences: thích đi {', '.join(pref.preferred_destinations[-2:])}]"
 
-            # Initialize context variables before use
-            tours_context = ""
-            kb_context = ""
-
-            system_msg = {"role": "system", "content": SYSTEM_PROMPT + context_msg + tours_context + kb_context}
-            conversation_history = memory.get_messages()
-            all_messages = [system_msg] + conversation_history
-            logger.info(f"Streaming chat: session={session_id}, user={user_id}, msg_len={len(request.message)}, history_msgs={len(conversation_history)}, total_to_llm={len(all_messages)}")
+            logger.info(f"Streaming chat: session={session_id}, user={user_id}, msg_len={len(request.message)}, history_msgs={len(memory.get_messages())}")
 
             # Stream from LLM directly — bypass agent business logic
-            from app.core.llm_client import get_llm_client, LLMCircuitOpenError, LLMTimeoutError
-            from app.services.tour_service import TourService
-            from app.schemas.tour import TourFilter
-            from app.ai.knowledge_base import TravelKnowledgeBase
+            from app.core.llm_client import get_llm_client, LLMCircuitOpenError, LLMTimeoutError, ToolCallsResult
+            from app.ai.tools import TOOL_DEFINITIONS
+            from app.ai.tools_executor import ToolExecutor
 
             llm_client = get_llm_client()
-            tour_service = TourService(db)
+            executor = ToolExecutor(db)
 
-            # Build context from knowledge base + DB
-            tours_context = ""
+            # Build system prompt with tool descriptions
+            tool_descriptions = "\n\n## CÔNG CỤ CÓ SẴN (LUỒNG HÀNH ĐỘNG TỰ ĐỘNG):\n"
+            for tool in TOOL_DEFINITIONS:
+                func = tool["function"]
+                params = func.get("parameters", {}).get("properties", {})
+                required = func.get("parameters", {}).get("required", [])
+                param_lines = []
+                for pname, pdef in params.items():
+                    req_mark = " (BẮT BUỘC)" if pname in required else " (tùy chọn)"
+                    param_lines.append(f"  - {pname}: {pdef.get('description', '')}{req_mark}")
+                param_str = "\n".join(param_lines) if param_lines else "  (không có tham số)"
+                tool_descriptions += f"\n### {func['name']}\n  Mô tả: {func['description']}\n  Tham số:\n{param_str}\n"
+
+            # Enrich system prompt with tools
+            system_with_tools = SYSTEM_PROMPT + context_msg + tool_descriptions
+
+            # Get conversation history
+            conversation_history = memory.get_messages()
+
+            # First LLM call with tools — LLM decides what to do
+            all_messages = [
+                {"role": "system", "content": system_with_tools},
+                *conversation_history
+            ]
+
+            logger.info(f"Streaming chat (tool-calling): session={session_id}, user={user_id}, msg_len={len(request.message)}, history_msgs={len(conversation_history)}")
+
+            # First LLM call — decide if tools are needed
+            llm_response = await llm_client.chat_completion(
+                all_messages,
+                tools=TOOL_DEFINITIONS,
+                tool_choice="auto",
+                max_tokens=2048
+            )
+
+            # Handle tool calls
             tour_results_for_complete = []
-            kb_context = ""
 
-            # For list_all_tours intent - query all tours
-            if intent == "list_all_tours":
-                filters = TourFilter()
-                try:
-                    tours, total = await tour_service.list_tours(filters, page=1, page_size=10)
-                    if tours:
-                        tour_lines = []
-                        for t in tours:
-                            price = float(t.price)
-                            discount = float(t.discountPrice) if t.discountPrice else None
-                            price_str = f"{price:,.0f}".replace(",", ".")
-                            discount_str = f"{discount:,.0f}".replace(",", ".") if discount else None
-                            
-                            price_display = f"~~{price_str}đ~~ **{discount_str}đ**" if discount_str else f"**{price_str}đ**"
-                            tour_lines.append(
-                                f"- **{t.name}** — {t.destination}, "
-                                f"{t.duration}, {price_display}/người, "
-                                f"Rating: {t.rating}⭐ ({t.reviewCount} đánh giá)"
-                            )
-                            tour_results_for_complete.append({
-                                "id": t.id,
-                                "name": t.name,
-                                "destination": t.destination,
-                                "region": t.region if t.region else None,
-                                "price": price,
-                                "discount_price": discount,
-                                "duration": t.duration,
-                                "rating": float(t.rating) if t.rating else 0,
-                                "review_count": t.reviewCount,
-                                "slug": t.slug,
-                                "short_description": t.shortDescription
-                            })
-                        
-                        all_msg = f" (hiển thị {len(tours)}/{total} tour)" if total > len(tours) else f" ({total} tour)"
-                        tours_context = (
-                            f"\n\n[📋 Danh sách tour hiện có{all_msg} - LIỆT KÊ TẤT CẢ {len(tours)} TOUR NÀY]:\n"
-                            + "\n".join(tour_lines)
-                            + f"\n\nLƯU Ý: Bạn PHẢI hiển thị đầy đủ thông tin tất cả {len(tours)} tour ở trên cho user."
-                        )
-                    else:
-                        tours_context = "\n\n[Hiện chưa có tour nào trong hệ thống]"
-                except Exception as tour_error:
-                    logger.warning(f"Tour list failed: {tour_error}")
+            if isinstance(llm_response, ToolCallsResult) and llm_response.tool_calls:
+                # Log which tools the LLM chose
+                tool_names = [tc.name for tc in llm_response.tool_calls]
+                logger.info(f"LLM chose tools: {tool_names}")
 
-            # For search_tour intent, query tour DB with filters
-            elif intent == "search_tour":
-                filters = TourFilter()
-                
-                # Check if user wants ALL tours (no specific filter)
-                message_lower = request.message.lower()
-                wants_all_tours = any(kw in message_lower for kw in [
-                    "tất cả", "tat ca", "tous", "tous", "liệt kê", "liet ke",
-                    "danh sách", "danh sach", "hiện tại", "hien tai", "các tour",
-                    "list", "all tour", "toutes", "todas"
-                ])
-                
-                if extracted_params.get("region"):
-                    region_map = {"Miền Bắc": "NORTH", "Miền Nam": "SOUTH", "Miền Trung": "CENTRAL"}
-                    filters.region = region_map.get(extracted_params["region"])
-                if extracted_params.get("destination"):
-                    filters.destination = extracted_params["destination"]
-                if extracted_params.get("max_price"):
-                    filters.max_price = extracted_params["max_price"]
-                if extracted_params.get("budget"):
-                    filters.max_price = extracted_params["budget"]
-                if extracted_params.get("category"):
-                    filters.category = extracted_params["category"]
+                # Execute tools
+                tool_results = await executor.execute_tools(
+                    llm_response.tool_calls,
+                    user_id=user_id
+                )
 
-                try:
-                    # Query more tours when user wants all, otherwise limit to 5
-                    page_size = 10 if wants_all_tours else 5
-                    tours, total = await tour_service.list_tours(filters, page=1, page_size=page_size)
-                    if tours:
-                        tour_lines = []
-                        for t in tours:
-                            price = float(t.price)
-                            discount = float(t.discountPrice) if t.discountPrice else None
-                            price_str = f"{price:,.0f}".replace(",", ".")
-                            discount_str = f"{discount:,.0f}".replace(",", ".") if discount else None
-                            
-                            price_display = f"~~{price_str}đ~~ **{discount_str}đ**" if discount_str else f"**{price_str}đ**"
-                            tour_lines.append(
-                                f"- **{t.name}** — {t.destination}, "
-                                f"{t.duration}, {price_display}/người, "
-                                f"Rating: {t.rating}⭐ ({t.reviewCount} đánh giá)"
-                            )
-                            tour_results_for_complete.append({
-                                "id": t.id,
-                                "name": t.name,
-                                "destination": t.destination,
-                                "region": t.region if t.region else None,
-                                "price": price,
-                                "discount_price": discount,
-                                "duration": t.duration,
-                                "rating": float(t.rating) if t.rating else 0,
-                                "review_count": t.reviewCount,
-                                "slug": t.slug,
-                                "short_description": t.shortDescription
-                            })
-                        
-                        all_tours_msg = f" (hiển thị {len(tours)}/{total} tour)" if total > len(tours) else f" ({total} tour)"
-                        tours_context = (
-                            f"\n\n[📋 Tour hiện có trong hệ thống{all_tours_msg} - LIỆT KÊ TẤT CẢ {len(tours)} TOUR NÀY TRONG CÂU TRẢ LỜI]:\n"
-                            + "\n".join(tour_lines)
-                            + f"\n\nLƯU Ý: Bạn PHẢI hiển thị đầy đủ thông tin tất cả {len(tours)} tour ở trên cho user. KHÔNG ĐƯỢC bỏ qua bất kỳ tour nào!"
-                        )
-                    else:
-                        # No tours found - use knowledge base as fallback
-                        region = extracted_params.get("region")
-                        destination = extracted_params.get("destination")
-                        budget = extracted_params.get("budget") or extracted_params.get("max_price")
-                        
-                        if region:
-                            kb_context = TravelKnowledgeBase.get_tour_recommendation_context(
-                                region=region,
-                                budget=str(budget) if budget else None
-                            )
-                        elif destination:
-                            kb_context = TravelKnowledgeBase.format_destination_for_llm(destination)
-                        
-                        if not kb_context:
-                            kb_context = TravelKnowledgeBase.get_general_info_context()
-                except Exception as tour_error:
-                    logger.warning(f"Tour search failed: {tour_error}, using knowledge base")
-                    kb_context = TravelKnowledgeBase.get_general_info_context()
-            
-            # For destination info queries - use KB
-            elif intent in ("general_question", "price_inquiry") and extracted_params.get("destination"):
-                dest = extracted_params["destination"]
-                dest_info = TravelKnowledgeBase.get_destination_info(dest)
-                if dest_info:
-                    kb_context = TravelKnowledgeBase.format_destination_for_llm(dest)
-            
-            # For policy queries - use KB
-            elif intent in ("general_question", "refund"):
-                msg_lower = request.message.lower()
-                if any(kw in msg_lower for kw in ["chính sách", "hủy", "hoàn tiền", "refund", "cancellation"]):
-                    policy = TravelKnowledgeBase.get_policy("cancellation")
-                    if policy:
-                        kb_context = policy.content
-            
-            # For FAQ queries
-            elif intent == "general_question" and any(kw in request.message.lower() for kw in ["hỏi", "faq", "câu hỏi", "thường gặp"]):
-                faqs = TravelKnowledgeBase.search_faq(request.message)
-                if faqs:
-                    faq_lines = [f"**Q: {f.question}**\nA: {f.answer}" for f in faqs[:3]]
-                    kb_context = "\n\n".join(faq_lines)
+                # Extract tours for the SSE complete event
+                tour_results_for_complete = executor.extract_tours_from_results(tool_results)
 
-            # Rebuild messages with tours context (was built before tour query)
-            system_msg = {"role": "system", "content": SYSTEM_PROMPT + context_msg + tours_context + kb_context}
-            all_messages = [system_msg] + conversation_history
+                # Build tool result messages for the LLM
+                all_messages.append({
+                    "role": "assistant",
+                    "content": llm_response.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tr["tool_call_id"],
+                            "type": "function",
+                            "function": {"name": tr["tool"], "arguments": json.dumps(tr["result"])}
+                        }
+                        for tr in tool_results
+                    ]
+                })
 
-            try:
+                for tr in tool_results:
+                    all_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tr["tool_call_id"],
+                        "content": json.dumps(tr["result"])
+                    })
+
+                # Second LLM call — synthesize final response with tool results
+                logger.info(f"Synthesizing response with {len(tool_results)} tool results")
+                final_response = await llm_client.chat_completion(
+                    all_messages,
+                    tools=TOOL_DEFINITIONS,
+                    max_tokens=2048
+                )
+
+                # Stream the synthesized response as SSE chunks
                 full_text = ""
-                async for chunk in llm_client.chat_completion_stream(all_messages):
+                async for chunk in llm_client.chat_completion_stream(
+                    [{"role": "user", "content": f"Kết quả tool: {json.dumps([{'tool': tr['tool'], 'result': tr['result']} for tr in tool_results])}. Viết câu trả lời cho user dựa trên kết quả này:"}]
+                ):
                     full_text += chunk
                     yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
 
-                # Save conversation to memory
-                memory.add_message("user", request.message, intent=intent, entities=extracted_params)
-                memory.add_message("assistant", full_text, intent=intent)
+            else:
+                # No tool calls — stream the response directly from LLM
+                full_text = ""
+                async for chunk in llm_client.chat_completion_stream(
+                    [{"role": "system", "content": SYSTEM_PROMPT + context_msg}, {"role": "user", "content": request.message}]
+                ):
+                    full_text += chunk
+                    yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
 
-                # Get suggestions
-                suggestions = recommendation_engine.get_conversation_suggestions(user_id, intent, extracted_params)
+            # Save conversation to memory
+            memory.add_message("user", request.message, intent=intent, entities=extracted_params)
+            memory.add_message("assistant", full_text, intent=intent)
 
-                # Send complete with metadata
-                complete_payload = {
-                    "type": "complete",
-                    "intent": intent,
-                    "suggestions": suggestions or [],
-                    "response": full_text,
-                    "tours": tour_results_for_complete,
-                }
-                yield f"data: {json.dumps(complete_payload)}\n\n"
+            # Get suggestions
+            suggestions = recommendation_engine.get_conversation_suggestions(user_id, intent, extracted_params)
 
-            except (LLMCircuitOpenError, LLMTimeoutError):
-                fallback = "Xin lỗi, dịch vụ AI tạm thời bận. Bạn vui lòng thử lại sau nhé."
-                yield f"data: {json.dumps({'type': 'content', 'content': fallback})}\n\n"
-                complete_payload = {"type": "complete", "intent": intent, "suggestions": [], "response": fallback, "tours": []}
-                yield f"data: {json.dumps(complete_payload)}\n\n"
+            # Send complete with metadata
+            complete_payload = {
+                "type": "complete",
+                "intent": intent,
+                "suggestions": suggestions or [],
+                "response": full_text,
+                "tours": tour_results_for_complete,
+            }
+            yield f"data: {json.dumps(complete_payload)}\n\n"
 
         except Exception as e:
             import logging

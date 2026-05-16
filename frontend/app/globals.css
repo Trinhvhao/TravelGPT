@@ -64,6 +64,51 @@
     /* ── Radius ──────────────────────────────────────────────────────────── */
     --radius: 0px;
   }
+
+  .dark {
+    /* ── Dark Theme Colors ────────────────────────────────────────────── */
+    --primary-hsl: 221 84% 57%;   /* #3b82f6 — Blue */
+    --primary: #3b82f6;
+    --primary-hover: #2563eb;
+    --primary-foreground: #ffffff;
+
+    --secondary-hsl: 217 33% 17%;
+    --secondary: #1e293b;
+    --secondary-foreground: #60a5fa;
+
+    --accent-hsl: 199 89% 48%;
+    --accent: #38bdf8;
+    --accent-foreground: #ffffff;
+
+    --muted-hsl: 240 6% 10%;
+    --muted: #1a1a1a;
+    --muted-foreground: #a1a1aa;
+
+    --destructive-hsl: 0 74% 61%;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+
+    --success-hsl: 120 59% 63%;
+    --success: #4ade80;
+    --success-foreground: #ffffff;
+
+    --warning-hsl: 48 96% 53%;
+    --warning: #fbbf24;
+    --warning-foreground: #000000;
+
+    --background: #0a0a0a;
+    --foreground: #ffffff;
+
+    --card: #111111;
+    --card-foreground: #ffffff;
+
+    --popover: #1a1a1a;
+    --popover-foreground: #ffffff;
+
+    --border: #2a2a2a;
+    --input: #1a1a1a;
+    --ring: #3b82f6;
+  }
 }
 
 @layer base {

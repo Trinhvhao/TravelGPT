@@ -1,5 +1,5 @@
 // ============================================================
-// Chat Store — enhanced with booking flow state + persist
+// Chat Store — enhanced with booking flow state + tool status + persist
 // ============================================================
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
@@ -8,6 +8,8 @@ import type {
   BookingFlowStep,
   BookingFlowData,
   ChatSuggestion,
+  ToolStatus,
+  WebSearchResult,
 } from "@/types";
 import { v4 as uuidv4 } from "uuid";
 
@@ -55,6 +57,14 @@ interface ChatStoreState {
   suggestions: ChatSuggestion[];
   error: string | null;
 
+  // AI Tool Status (shown while LLM is calling tools)
+  toolStatus: ToolStatus;
+  toolLabel: string;
+
+  // Web search results (from web_search_travel tool)
+  webSearchResults: WebSearchResult[];
+  webSearchQuery: string | null;
+
   // Message actions & metadata
   messageReactions: Record<string, MessageReaction>;
   bookmarkedMessages: BookmarkedMessage[];
@@ -88,6 +98,14 @@ interface ChatStoreState {
   retryMessage: (messageId: string) => void;
   markMessageFailed: (messageId: string) => void;
   removeFailedMessage: (messageId: string) => void;
+
+  // Actions - AI Tool Status
+  setToolStatus: (status: ToolStatus, label?: string) => void;
+  clearToolStatus: () => void;
+
+  // Actions - Web Search
+  setWebSearchResults: (results: WebSearchResult[], query?: string) => void;
+  clearWebSearchResults: () => void;
 
   // Actions - Conversations
   addConversation: (conversation: ConversationSummary) => void;
@@ -151,6 +169,14 @@ export const useChatStore = create<ChatStoreState>()(
       isStreaming: false,
       suggestions: [],
       error: null,
+
+      // Tool status
+      toolStatus: "idle",
+      toolLabel: "",
+
+      // Web search
+      webSearchResults: [],
+      webSearchQuery: null,
 
       messageReactions: {},
       bookmarkedMessages: [],
@@ -236,6 +262,10 @@ export const useChatStore = create<ChatStoreState>()(
         set({
           messages: [],
           suggestions: [],
+          toolStatus: "idle",
+          toolLabel: "",
+          webSearchResults: [],
+          webSearchQuery: null,
           bookingFlowActive: false,
           bookingStep: null,
           bookingData: {},
@@ -362,6 +392,19 @@ export const useChatStore = create<ChatStoreState>()(
       setSearchResults: (results) => set({ searchResults: results }),
 
       clearSearch: () => set({ searchQuery: "", searchResults: [] }),
+
+      // ── AI Tool Status ───────────────────────────────────────────
+      setToolStatus: (status, label = "") =>
+        set({ toolStatus: status, toolLabel: label }),
+
+      clearToolStatus: () => set({ toolStatus: "idle", toolLabel: "" }),
+
+      // ── Web Search ───────────────────────────────────────────────
+      setWebSearchResults: (results, query) =>
+        set({ webSearchResults: results, webSearchQuery: query ?? null }),
+
+      clearWebSearchResults: () =>
+        set({ webSearchResults: [], webSearchQuery: null }),
     }),
     {
       name: "travelgpt-chat-store",

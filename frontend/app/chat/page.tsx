@@ -8,6 +8,8 @@ import type {
   Tour,
   BookingFlowStep,
   BookingFlowData,
+  WebSearchResult,
+  ImageAttachment,
 } from "@/types";
 import {
   ChatInput,
@@ -16,7 +18,12 @@ import {
   ChatEmptyState,
   ChatMessageItem,
 } from "@/components/chat";
+import { WebSearchResultCard } from "@/components/chat/web-search-result-card";
+import { CancellationCard } from "@/components/chat/cancellation-card";
+import { useImageAttachments } from "@/components/chat/chat-attachments";
 import Navbar from "@/components/layout/navbar";
+import { renderContentBlocks } from "@/components/chat/rich-content-blocks";
+import type { ContentBlock } from "@/types/chat";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,11 +36,15 @@ import {
   ArrowRight,
   CheckCircle2,
   X,
+  Loader2,
+  Search,
+  Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { v4 as uuidv4 } from "uuid";
+import { renderContent } from "@/lib/render-content";
 
 // ─── Design Tokens (Airbnb/Traveloka Style) ─────────────────────────────────────
 const PRIMARY = "#0046C1";
@@ -53,19 +64,19 @@ const WELCOME_MSG: ChatMessage = {
   metadata: { intent: "greeting" },
 };
 
-// ─── Render content with **bold** markdown ─────────────────────────────────────
-function renderContent(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return (
-        <span key={i} className="font-bold" style={{ color: PRIMARY }}>
-          {part.slice(2, -2)}
-        </span>
-      );
-    }
-    return <span key={i}>{part}</span>;
-  });
+// ─── Intent → Tool Status label ─────────────────────────────────────────────────
+const INTENT_TOOL_LABELS: Record<string, { status: string; label: string }> = {
+  search_tour: { status: "searching_tours", label: "Đang tìm kiếm tour..." },
+  get_tour_detail: { status: "fetching_tour_details", label: "Đang lấy chi tiết tour..." },
+  list_all_tours: { status: "searching_tours", label: "Đang tải danh sách tour..." },
+  get_user_bookings: { status: "checking_bookings", label: "Đang kiểm tra booking..." },
+  cancel_booking: { status: "cancelling_booking", label: "Đang hủy booking..." },
+  web_search: { status: "searching_web", label: "Đang tra cứu trên web..." },
+};
+
+function getToolStatus(intent?: string): { status: string; label: string } | null {
+  if (!intent) return null;
+  return INTENT_TOOL_LABELS[intent] ?? { status: "synthesizing", label: "Đang xử lý..." };
 }
 
 // ─── Assistant Bubble ──────────────────────────────────────────────────────────
@@ -73,11 +84,15 @@ function AssistantBubble({
   content,
   intent,
   suggestions,
+  toolStatus,
+  toolLabel,
   onSuggestionClick,
 }: {
   content: string;
   intent?: string;
   suggestions?: ChatSuggestion[];
+  toolStatus?: string;
+  toolLabel?: string;
   onSuggestionClick?: (text: string) => void;
 }) {
   return (
@@ -97,6 +112,20 @@ function AssistantBubble({
             boxShadow: "0 4px 20px rgba(0,70,193,0.12)",
           }}
         >
+          {/* Tool status indicator */}
+          {toolStatus && toolLabel && toolStatus !== "idle" && (
+            <div
+              className="flex items-center gap-2 mb-3 text-xs font-medium px-3 py-1.5 rounded-full"
+              style={{ backgroundColor: "#EEF6FF", color: "#0046C1" }}
+              role="status"
+              aria-label={toolLabel}
+            >
+              <Loader2 className="h-3 w-3 animate-spin flex-shrink-0" />
+              <span>{toolLabel}</span>
+              <Globe className="h-3 w-3 ml-1 flex-shrink-0" aria-hidden="true" />
+            </div>
+          )}
+
           <div className="whitespace-pre-wrap text-[15px] leading-relaxed" style={{ color: NAVY }}>
             {renderContent(content)}
           </div>
@@ -122,7 +151,7 @@ function AssistantBubble({
               <button
                 key={i}
                 onClick={() => onSuggestionClick(s.text)}
-                className="text-[13px] px-4 py-2 font-medium shadow-sm transition-all duration-200 flex items-center gap-2"
+                className="text-[13px] px-4 py-2 font-medium shadow-sm transition-all duration-200 flex items-center gap-2 cursor-pointer"
                 style={{
                   backgroundColor: "#FFFFFF",
                   color: PRIMARY,
@@ -550,6 +579,10 @@ export default function ChatPage() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [pendingSuggestions, setPendingSuggestions] = useState<ChatSuggestion[]>([]);
 
+  // Image attachments
+  const { attachments, addAttachments, removeAttachment, clearAttachments, hasAttachments } =
+    useImageAttachments();
+
   const {
     messages,
     isLoading,
@@ -560,7 +593,7 @@ export default function ChatPage() {
     sessionId,
     conversations,
     addMessage,
-    setMessages,
+    setMessages: _setMessages,
     setLoading,
     setStreaming,
     setSuggestions,
@@ -569,9 +602,19 @@ export default function ChatPage() {
     updateBookingData,
     clearMessages,
     resetFlows,
+    setCancellationFlow,
     failedMessages,
     removeFailedMessage,
     retryMessage,
+    toolStatus,
+    toolLabel,
+    setToolStatus,
+    clearToolStatus,
+    webSearchResults,
+    webSearchQuery,
+    setWebSearchResults,
+    clearWebSearchResults,
+    cancellationFlowActive,
   } = useChatStore();
 
   const initializedRef = useRef(false);
@@ -630,6 +673,7 @@ export default function ChatPage() {
       role: "user",
       content: messageText,
       created_at: new Date().toISOString(),
+      attachments: attachments.length > 0 ? [...attachments] : undefined,
     };
     addMessage(userMsg);
     setLoading(true);
@@ -697,6 +741,11 @@ export default function ChatPage() {
             const event = JSON.parse(raw);
 
             if (event.type === "content") {
+              // Show tool status while streaming
+              if (event.intent) {
+                const ts = getToolStatus(event.intent);
+                if (ts) setToolStatus(ts.status as never, ts.label);
+              }
               useChatStore.setState((state) => ({
                 messages: state.messages.map((m) =>
                   m.id === streamingId ? { ...m, content: m.content + event.content } : m
@@ -715,19 +764,28 @@ export default function ChatPage() {
                           booking_step: event.booking_step,
                           booking_data: event.booking_data,
                           booking_code: event.booking_code,
+                          cancellation_flow_active: event.cancellation_flow_active,
+                          cancellation_step: event.cancellation_step,
+                          cancellation_data: event.cancellation_data,
                         },
                       }
                     : m
                 ),
               }));
 
+              // Clear tool status when done
+              clearToolStatus();
+              clearWebSearchResults();
+
+              // Activate cancellation flow if backend returns it
+              if (event.cancellation_flow_active) {
+                setCancellationFlow(true);
+              }
               if (event.booking_flow_active && event.booking_step) {
                 setBookingFlow(true, event.booking_step, event.booking_data ?? {});
               }
-              // Convert string[] to ChatSuggestion[] format
               if (event.suggestions && Array.isArray(event.suggestions) && event.suggestions.length > 0) {
                 const chatSuggestions: ChatSuggestion[] = event.suggestions.map((text: string | ChatSuggestion) => {
-                  // Handle both string and object formats
                   if (typeof text === 'string') {
                     return { text, intent: event.intent, type: "suggestion" as const };
                   }
@@ -736,11 +794,11 @@ export default function ChatPage() {
                 setPendingSuggestions(chatSuggestions);
                 setSuggestions(chatSuggestions);
               } else {
-                // Clear suggestions if none returned
                 setPendingSuggestions([]);
                 setSuggestions([]);
               }
             } else if (event.type === "error") {
+              clearToolStatus();
               throw new Error(event.error);
             }
           } catch {
@@ -761,7 +819,10 @@ export default function ChatPage() {
       useChatStore.setState((state) => ({
         messages: state.messages.slice(0, -1),
       }));
+      clearToolStatus();
+      clearWebSearchResults();
     } finally {
+      clearAttachments();
       setLoading(false);
       setStreaming(false);
     }
@@ -859,15 +920,44 @@ export default function ChatPage() {
                 />
               ) : (
                 <div className="space-y-4">
-                  {/* Assistant message with actions */}
+                  {/* Assistant message — show tool status for last streaming message */}
                   <ChatMessageItem
                     message={message}
                     isLast={isLast}
+                    toolStatus={isLast && isStreaming ? toolStatus : undefined}
+                    toolLabel={isLast && isStreaming ? toolLabel : undefined}
                   />
 
                   {/* Tour results */}
                   {tours.length > 0 && (
                     <TourResultInline tours={tours} onBook={handleBookFromTour} />
+                  )}
+
+                  {/* Web search results */}
+                  {webSearchResults.length > 0 && isLast && (
+                    <WebSearchResultCard
+                      results={webSearchResults}
+                      query={webSearchQuery ?? undefined}
+                    />
+                  )}
+
+                  {/* Cancellation flow */}
+                  {cancellationFlowActive && (
+                    <CancellationCard
+                      step={cancellationFlowActive ? "VERIFY_BOOKING" : undefined}
+                      data={meta?.cancellation_data as never}
+                      onConfirm={(reason) =>
+                        handleSubmit(`Xác nhận hủy booking, lý do: ${reason ?? ""}`)
+                      }
+                      onCancel={() => {
+                        resetFlows();
+                        handleSubmit("Không hủy nữa");
+                      }}
+                      onReschedule={() => {
+                        resetFlows();
+                        handleSubmit("Tôi muốn đổi lịch thay vì hủy");
+                      }}
+                    />
                   )}
 
                   {/* Booking flow */}
@@ -918,6 +1008,10 @@ export default function ChatPage() {
           onSend={(text) => handleSubmit(text)}
           disabled={isLoading || isStreaming}
           placeholder="Hỏi về tour, đặt tour, hoặc nhận gợi ý du lịch..."
+          attachments={attachments}
+          onRemoveAttachment={removeAttachment}
+          onAddAttachments={addAttachments}
+          attachDisabled={attachments.length >= 3}
         />
         <div className="flex items-center justify-between mt-3 px-1">
           <p className="text-[11px]" style={{ color: GRAY }}>

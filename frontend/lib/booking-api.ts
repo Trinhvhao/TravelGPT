@@ -1,5 +1,5 @@
 // ============================================================
-// Booking API — create, read, update, cancel
+// Booking API — create, read, update, cancel, payment
 // ============================================================
 import { api } from "./api";
 import type {
@@ -15,6 +15,18 @@ export interface BookingFilters {
   payment_status?: PaymentStatus;
   page?: number;
   page_size?: number;
+}
+
+export interface CreateCheckoutResponse {
+  session_id: string;
+  checkout_url: string;
+}
+
+export interface VerifyCheckoutResponse {
+  booking_id: string;
+  booking_code: string | null;
+  status: string;
+  payment_method: string;
 }
 
 export const bookingApi = {
@@ -57,6 +69,40 @@ export const bookingApi = {
    */
   cancel: async (id: string): Promise<Booking> => {
     const response = await api.put<Booking>(`/bookings/${id}/cancel`);
+    return response.data;
+  },
+
+  /**
+   * Create a Stripe Checkout Session for a booking.
+   */
+  createCheckout: async (
+    booking_id: string,
+    success_url?: string,
+    cancel_url?: string
+  ): Promise<CreateCheckoutResponse> => {
+    const response = await api.post<CreateCheckoutResponse>("/payments/create-checkout", {
+      booking_id,
+      success_url: success_url ?? `${window.location.origin}/bookings?booking_id=${booking_id}&paid=true`,
+      cancel_url: cancel_url ?? `${window.location.origin}/bookings?cancelled=true`,
+    });
+    return response.data;
+  },
+
+  /**
+   * Verify a Stripe checkout session.
+   */
+  verifyCheckout: async (session_id: string): Promise<VerifyCheckoutResponse> => {
+    const response = await api.post<VerifyCheckoutResponse>("/payments/verify-checkout", {
+      session_id,
+    });
+    return response.data;
+  },
+
+  /**
+   * Get Stripe publishable key.
+   */
+  getStripeKey: async (): Promise<{ publishable_key: string }> => {
+    const response = await api.get<{ publishable_key: string }>("/payments/stripe-publishable-key");
     return response.data;
   },
 

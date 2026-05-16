@@ -12,7 +12,7 @@ from app.core.error_handler import register_exception_handlers
 from app.core.session import close_session_store
 from app.core.token_blacklist import close_blacklist_service
 from app.core.llm_client import close_llm_client
-from app.api.v1 import auth, tours, bookings, users, chat
+from app.api.v1 import auth, tours, bookings, users, chat, payments
 
 settings = get_settings()
 
@@ -24,6 +24,17 @@ async def lifespan(app: FastAPI):
     await connect_db()
     await cache.connect()
     await job_processor.start()
+
+    # Startup embedding service — index all tours for semantic search
+    try:
+        from app.services.embedding_service import reindex_tours_on_startup
+        from app.core.prisma import db
+        indexed = await reindex_tours_on_startup(db)
+        import logging
+        logging.getLogger(__name__).info(f"Embedding service: indexed {indexed} tours")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Embedding service startup skipped: {e}")
 
     # Setup API docs
     setup_api_docs(app)
@@ -70,6 +81,7 @@ app.include_router(tours.router, prefix="/api/v1")
 app.include_router(bookings.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
+app.include_router(payments.router, prefix="/api/v1")
 
 
 @app.get("/")

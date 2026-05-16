@@ -7,12 +7,28 @@ LLM Client - Production Ready
 """
 import asyncio
 import logging
-from typing import Optional, List, Callable
-from dataclasses import dataclass
+from typing import Optional, List, Callable, Union
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import aiohttp
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ToolCall:
+    """Represents a tool call returned by the LLM."""
+    name: str
+    arguments: dict
+    id: str  # tool_call_id from LLM response
+
+
+@dataclass
+class ToolCallsResult:
+    """Result of a chat completion that may include tool calls."""
+    content: str
+    tool_calls: List[ToolCall]
+    finish_reason: str
 
 
 @dataclass
@@ -173,34 +189,45 @@ class LLMClient:
         self,
         messages: List[dict],
         temperature: float = 0.7,
-        max_tokens: int = 2000
+        max_tokens: int = 2000,
+        tools: Optional[List[dict]] = None,
+        tool_choice: Optional[str] = None
     ) -> dict:
-        return {
+        payload = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens
         }
+        if tools:
+            payload["tools"] = tools
+        if tool_choice:
+            payload["tool_choice"] = tool_choice
+        return payload
 
     async def chat_completion(
         self,
         messages: List[dict],
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        fallback_fn: Optional[Callable] = None
-    ) -> str:
+        fallback_fn: Optional[Callable] = None,
+        tools: Optional[List[dict]] = None,
+        tool_choice: Optional[str] = None
+    ) -> Union[str, ToolCallsResult]:
         """
         Send chat completion request with retry and circuit breaker.
-        
+
         Args:
             messages: List of message dicts with 'role' and 'content'
             temperature: Sampling temperature (0-2)
             max_tokens: Maximum tokens in response
             fallback_fn: Optional fallback function if all retries fail
-            
+            tools: Optional list of tool definitions (OpenAI format)
+            tool_choice: Optional tool choice ('auto', 'none', or specific tool name)
+
         Returns:
-            Response content string
-            
+            Response content string if no tools, or ToolCallsResult if tools returned.
+
         Raises:
             LLMTimeoutError: If request times out after all retries
             LLMCircuitOpenError: If circuit breaker is open
@@ -212,7 +239,7 @@ class LLMClient:
                 return fallback_fn()
             raise LLMCircuitOpenError("LLM service temporarily unavailable")
 
-        payload = self._build_payload(messages, temperature, max_tokens)
+        payload = self._build_payload(messages, temperature, max_tokens, tools, tool_choice)
         last_error: Optional[Exception] = None
 
         for attempt in range(self.max_retries + 1):
@@ -232,14 +259,34 @@ class LLMClient:
                             logger.error(f"LLM API client error: {response.status} - {error_text}")
                             self.circuit_breaker._record_failure()
                             raise LLMClientError(f"LLM API error: {response.status}")
-                        
+
                         # Retryable error (5xx)
                         raise LLMClientError(f"LLM API server error: {response.status}")
 
                     data = await response.json()
-                    content = data["choices"][0]["message"]["content"]
-                    
+                    message = data["choices"][0]["message"]
+                    content = message.get("content") or ""
+                    finish_reason = data["choices"][0].get("finish_reason", "stop")
+
+                    # Parse tool calls if present
+                    tool_calls: List[ToolCall] = []
+                    if "tool_calls" in message and message["tool_calls"]:
+                        for tc in message["tool_calls"]:
+                            func = tc.get("function", {})
+                            tool_calls.append(ToolCall(
+                                name=func.get("name", ""),
+                                arguments=func.get("arguments", {}),
+                                id=tc.get("id", "")
+                            ))
+
                     self.circuit_breaker._record_success()
+
+                    if tools and tool_calls:
+                        return ToolCallsResult(
+                            content=content,
+                            tool_calls=tool_calls,
+                            finish_reason=finish_reason
+                        )
                     return content
 
             except asyncio.TimeoutError as e:

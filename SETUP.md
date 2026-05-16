@@ -1,39 +1,68 @@
-# TravelGPT - Hướng Dẫn Cài Đặt
+# <p align="center"><img src="https://images.unsplash.com/photo-1488085061387-422e29b40080?w=1200&q=80" width="100%" alt="TravelGPT Banner" /></p></p>
 
-## Mục Lục
+<p align="center">
+  <img src="https://img.shields.io/badge/Platform-TravelGPT-FF6B35?style=for-the-badge" alt="Platform">
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker">
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=next.js&logoColor=white" alt="Next.js">
+</p>
 
-1. [Yêu Cầu Hệ Thống](#1-yêu-cầu-hệ-thống)
-2. [Cài Đặt Nhanh với Docker](#2-cài-đặt-nhanh-với-docker)
-3. [Cài Đặt Chi Tiết (Development)](#3-cài-đặt-chi-tiết-development)
-4. [Cấu Hình Biến Môi Trường](#4-cấu-hình-biến-môi-trường)
-5. [Thiết Lập Database](#5-thiết-lập-database)
-6. [Khởi Chạy Ứng Dụng](#6-khởi-chạy-ứng-dụng)
-7. [Kiểm Tra Sau Cài Đặt](#7-kiểm-tra-sau-cài-đặt)
-8. [Xử Lý Sự Cố Thường Gặp](#8-xử-lý-sự-cố-thường-gặp)
+<h1 align="center" style="font-size: 3rem; font-weight: 800; color: #1a1a2e; margin-bottom: 0.5rem;">
+  🌍 TravelGPT
+</h1>
 
----
-
-## 1. Yêu Cầu Hệ Thống
-
-### Bắt buộc
-
-| Phần mềm | Phiên bản tối thiểu | Ghi chú |
-|----------|---------------------|---------|
-| Docker | 20.x+ | [Cài đặt Docker](https://docs.docker.com/get-docker/) |
-| Docker Compose | 2.x+ | Thường đi kèm Docker Desktop |
-| Git | Bất kỳ | Để clone project |
-
-### Tùy chọn (Development)
-
-| Phần mềm | Phiên bản tối thiểu | Ghi chú |
-|----------|---------------------|---------|
-| Node.js | 20.x LTS | [Cài đặt Node.js](https://nodejs.org/) |
-| Python | 3.11+ | [Cài đặt Python](https://www.python.org/) |
-| PostgreSQL Client | 15+ | Để quản lý DB trực tiếp |
+<p align="center" style="font-size: 1.2rem; color: #666; margin-bottom: 2rem;">
+  <em>Hướng Dẫn Cài Đặt Chi Tiết</em>
+</p>
 
 ---
 
-## 2. Cài Đặt Nhanh với Docker
+## 📋 Mục Lục
+
+<p align="center">
+
+| # | Phần | Mô tả |
+|---|------|--------|
+| 1 | [Yêu Cầu Hệ Thống](#-1-yêu-cầu-hệ-thống) | Phần mềm cần thiết |
+| 2 | [Cài Đặt Nhanh Docker](#-2-cài-đặt-nhanh-với-docker) | Khởi chạy trong 5 phút |
+| 3 | [Cài Đặt Development](#-3-cài-đặt-chi-tiết-development) | Cài đặt thủ công |
+| 4 | [Cấu Hình Biến Môi Trường](#-4-cấu-hình-biến-môi-trường) | File .env |
+| 5 | [Thiết Lập Database](#-5-thiết-lập-database) | PostgreSQL + Prisma |
+| 6 | [Khởi Chạy Ứng Dụng](#-6-khởi-chạy-ứng-dụng) | Chạy backend & frontend |
+| 7 | [Kiểm Tra Sau Cài Đặt](#-7-kiểm-tra-sau-cài-đặt) | Verify mọi thứ hoạt động |
+| 8 | [Xử Lý Sự Cố](#-8-xử-lý-sự-cố-thường-gặp) | Troubleshooting guide |
+
+</p>
+
+---
+
+## 🖥️ 1. Yêu Cầu Hệ Thống
+
+<p align="center">
+
+### ⚡ Bắt Buộc
+
+| | Phần mềm | Phiên bản | Ghi chú |
+|---|----------|-----------|---------|
+| 🐳 | Docker | 20.x+ | [Cài đặt Docker](https://docs.docker.com/get-docker/) |
+| 📦 | Docker Compose | 2.x+ | Thường đi kèm Docker Desktop |
+| 📂 | Git | Bất kỳ | Để clone project |
+
+### 🔧 Tùy Chọn (Development)
+
+| | Phần mềm | Phiên bản | Ghi chú |
+|---|----------|-----------|---------|
+| 🟢 | Node.js | 20.x LTS | [Cài đặt Node.js](https://nodejs.org/) |
+| 🐍 | Python | 3.11+ | [Cài đặt Python](https://www.python.org/) |
+| 🗄️ | PostgreSQL Client | 15+ | Để quản lý DB trực tiếp |
+
+</p>
+
+---
+
+## ⚡ 2. Cài Đặt Nhanh với Docker
+
+<p align="center"><img src="https://images.unsplash.com/photo-1605745341112-85968b19335b?w=800&q=80" width="90%" alt="Travel Adventure" style="border-radius: 16px; margin: 2rem 0;" /></p>
 
 ### 2.1 Clone và Di Chuyển
 
@@ -70,8 +99,10 @@ docker-compose logs -f
 
 ### 2.4 Các Service Sau Khi Khởi Chạy
 
-| Service | URL | Mô tả |
-|---------|-----|-------|
+<p align="center">
+
+| 🚀 Service | 🔗 URL | 📝 Mô tả |
+|-----------|--------|---------|
 | Frontend | http://localhost:3005 | Giao diện người dùng |
 | Backend API | http://localhost:3008 | API server |
 | API Docs | http://localhost:3008/docs | Swagger UI |
@@ -79,19 +110,21 @@ docker-compose logs -f
 | Redis | localhost:3007 | Cache (port 6379 trong container) |
 | Nginx | http://localhost | Reverse proxy |
 
+</p>
+
 ### 2.5 Dừng Services
 
 ```bash
 # Dừng và xóa containers
 docker-compose down
 
-# Xóa cả volumes (CẨN THẬN: xóa toàn bộ dữ liệu)
+# Xóa cả volumes (⚠️ CẨN THẬN: xóa toàn bộ dữ liệu)
 docker-compose down -v
 ```
 
 ---
 
-## 3. Cài Đặt Chi Tiết (Development)
+## 🛠️ 3. Cài Đặt Chi Tiết (Development)
 
 ### 3.1 Backend (Python + FastAPI)
 
@@ -131,7 +164,7 @@ cp .env.example .env.local
 
 ---
 
-## 4. Cấu Hình Biến Môi Trường
+## ⚙️ 4. Cấu Hình Biến Môi Trường
 
 ### 4.1 Backend (.env)
 
@@ -173,7 +206,7 @@ NEXT_PUBLIC_APP_URL=http://localhost:3005
 
 ---
 
-## 5. Thiết Lập Database
+## 🗄️ 5. Thiết Lập Database
 
 ### 5.1 Tạo Database (nếu chưa có)
 
@@ -217,7 +250,9 @@ npx prisma studio
 
 ---
 
-## 6. Khởi Chạy Ứng Dụng
+## 🚀 6. Khởi Chạy Ứng Dụng
+
+<p align="center"><img src="https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=800&q=80" width="90%" alt="Mountain Adventure" style="border-radius: 16px; margin: 2rem 0;" /></p>
 
 ### 6.1 Chạy Backend
 
@@ -232,8 +267,8 @@ uvicorn app.main:app --reload --port 3008
 uvicorn app.main:app --host 0.0.0.0 --port 3008
 ```
 
-Backend sẽ chạy tại: http://localhost:3008
-API Docs: http://localhost:3008/docs
+> **Backend:** http://localhost:3008
+> **API Docs:** http://localhost:3008/docs
 
 ### 6.2 Chạy Frontend
 
@@ -250,11 +285,11 @@ npm run build
 npm start
 ```
 
-Frontend sẽ chạy tại: http://localhost:3005
+> **Frontend:** http://localhost:3005
 
 ---
 
-## 7. Kiểm Tra Sau Cài Đặt
+## ✅ 7. Kiểm Tra Sau Cài Đặt
 
 ### 7.1 Kiểm Tra Backend
 
@@ -287,9 +322,9 @@ npm run lint
 
 ---
 
-## 8. Xử Lý Sự Cố Thường Gặp
+## 🔧 8. Xử Lý Sự Cố Thường Gặp
 
-### Lỗi: `DATABASE_URL` not found
+### ❌ Lỗi: `DATABASE_URL` not found
 
 **Nguyên nhân:** File `.env` chưa được tạo hoặc sai đường dẫn.
 
@@ -303,7 +338,9 @@ ls -la backend/.env
 cp backend/.env.example backend/.env
 ```
 
-### Lỗi: `AICLIEN2API_KEY` not configured
+---
+
+### ❌ Lỗi: `AICLIEN2API_KEY` not configured
 
 **Nguyên nhân:** Chưa thêm API key cho AI service.
 
@@ -311,7 +348,9 @@ cp backend/.env.example backend/.env
 - Đăng ký tài khoản tại [AIclien2api](https://aiclientapi.com) hoặc [OpenAI](https://platform.openai.com)
 - Thêm key vào file `.env`
 
-### Lỗi: Port đã được sử dụng
+---
+
+### ❌ Lỗi: Port đã được sử dụng
 
 **Nguyên nhân:** Một service khác đang chạy trên port cần thiết.
 
@@ -326,7 +365,9 @@ lsof -i :5432  # PostgreSQL
 # Hoặc thay đổi port trong docker-compose.yml
 ```
 
-### Lỗi: Prisma Client lỗi
+---
+
+### ❌ Lỗi: Prisma Client lỗi
 
 **Giải pháp:**
 
@@ -337,7 +378,9 @@ npx prisma generate
 npx prisma db push
 ```
 
-### Lỗi: Docker containers không khởi động được
+---
+
+### ❌ Lỗi: Docker containers không khởi động được
 
 **Giải pháp:**
 
@@ -356,11 +399,12 @@ docker-compose up -d --build
 
 ---
 
-## Cấu Trúc Project
+## 📁 Cấu Trúc Project
 
 ```
-TravelGPT/
-├── backend/                    # FastAPI Backend
+🌴 TravelGPT/
+│
+├── 🐍 backend/                    # FastAPI Backend
 │   ├── app/
 │   │   ├── api/v1/           # API Routes (auth, chat, tours, bookings)
 │   │   ├── core/             # Config, security, database
@@ -373,35 +417,75 @@ TravelGPT/
 │   ├── Dockerfile
 │   └── requirements.txt
 │
-├── frontend/                   # Next.js Frontend
+├── ⚛️ frontend/                   # Next.js Frontend
 │   ├── app/                   # Next.js App Router pages
 │   │   ├── admin/            # Admin dashboard
 │   │   ├── chat/             # AI Chat interface
 │   │   ├── tours/            # Tour listing & detail
 │   │   └── bookings/         # Booking management
 │   ├── components/           # React components (shadcn/ui)
-│   ├── lib/                   # API clients
+│   ├── lib/                  # API clients
 │   ├── stores/               # Zustand state management
 │   ├── Dockerfile
 │   └── package.json
 │
-├── docker-compose.yml         # Docker orchestration
-├── .env.example              # Environment template
-└── README.md                 # Project documentation
+├── 🐳 docker-compose.yml         # Docker orchestration
+├── 🔐 .env.example              # Environment template
+└── 📖 README.md                 # Project documentation
 ```
 
 ---
 
-## Tài Khoản Mặc Định (Sau Khi Seed)
+## 👤 Tài Khoản Mặc Định (Sau Khi Seed)
+
+<p align="center">
 
 | Role | Email | Password |
 |------|-------|----------|
-| Admin | admin@travelgpt.com | admin123 |
-| User | user@travelgpt.com | user123 |
+| 🛡️ Admin | admin@travelgpt.vn | admin123 |
+| 👤 User | user@test.com | user123 |
+
+</p>
 
 ---
 
-## Liên Hệ & Hỗ Trợ
+## 💳 Stripe Payment (Tuỳ Chọn)
 
-- **GitHub Issues:** https://github.com/Trinhvhao/TravelGPT/issues
-- **Documentation:** https://github.com/Trinhvhao/TravelGPT#readme
+<p align="center"><img src="https://images.unsplash.com/photo-1559526324-593bc073d938?w=800&q=80" width="70%" alt="Payment" style="border-radius: 12px; margin: 1rem 0;" /></p>
+
+Để bật thanh toán qua Stripe:
+
+1. Tạo tài khoản tại [stripe.com](https://stripe.com)
+2. Lấy **Secret Key** và **Publishable Key** từ Stripe Dashboard
+3. Thêm vào `.env`:
+
+```env
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_PUBLISHABLE_KEY=pk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+> 💡 **Tip:** Không bắt buộc — hệ thống vẫn hoạt động với thanh toán thủ công (admin xác nhận).
+
+---
+
+## 📞 Liên Hệ & Hỗ Trợ
+
+<p align="center">
+
+| | Liên hệ | |
+|---|---------|---|
+| 🐛 GitHub Issues | [TravelGPT Issues](https://github.com/Trinhvhao/TravelGPT/issues) |
+| 📚 Documentation | [GitHub README](https://github.com/Trinhvhao/TravelGPT#readme) |
+
+</p>
+
+---
+
+<p align="center">
+  <img src="https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1200&q=80" width="100%" alt="Travel Sunset" style="border-radius: 12px; margin-top: 2rem;" />
+</p>
+
+<p align="center" style="color: #888; font-size: 0.9rem; margin-top: 1rem;">
+  <em>Made with ❤️ for travelers everywhere</em>
+</p>
