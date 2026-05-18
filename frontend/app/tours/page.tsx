@@ -1,11 +1,13 @@
 "use client";
 import { useState, useEffect, useCallback, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/utils";
 import { useDebounce } from "@/hooks/useDebounce";
 import { tourApi, type TourSearchParams } from "@/lib/tour-api";
+import { wishlistApi } from "@/lib/wishlist-api";
 import type { Region } from "@/types/tour";
 import type { Tour } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -17,11 +19,14 @@ import Footer from "@/components/layout/footer";
 import { DestinationShowcase } from "@/components/tour/destination-showcase";
 import { DealsSection } from "@/components/tour/deals-section";
 import { TestimonialsSection } from "@/components/tour/testimonials-section";
+import { getDestinationImage } from "@/lib/destination-images";
+import { useAuthStore } from "@/stores";
 import {
   Search,
   SlidersHorizontal,
   X,
   ChevronDown,
+  ChevronUp,
   Star,
   Clock,
   MapPin,
@@ -36,6 +41,8 @@ import {
   Headphones,
   Heart,
   Users,
+  CheckCircle2,
+  Loader2,
 } from "lucide-react";
 
 // ─── Design Tokens ──────────────────────────────────────────────────────────────
@@ -327,83 +334,49 @@ function CategoryFilters({
 }
 
 // ─── Tour Card ─────────────────────────────────────────────────────────────────
-// Fallback images by destination type
-const DESTINATION_FALLBACKS: Record<string, string[]> = {
-  beach: [
-    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800",
-    "https://images.unsplash.com/photo-1519046904884-53103b34b206?w=800",
-    "https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800",
-  ],
-  island: [
-    "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800",
-    "https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800",
-    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800",
-  ],
-  mountain: [
-    "https://images.unsplash.com/photo-1528181304800-259b08848526?w=800",
-    "https://images.unsplash.com/photo-1597007064818-11d2395dc5df?w=800",
-    "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800",
-  ],
-  city: [
-    "https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=800",
-    "https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?w=800",
-    "https://images.unsplash.com/photo-1561626423-a51b45aef0a1?w=800",
-  ],
-  nature: [
-    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800",
-    "https://images.unsplash.com/photo-1519046904884-53103b34b206?w=800",
-    "https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800",
-  ],
-};
-
-function getFallbackImage(destination: string, category?: string): string {
-  // Try category-based fallback first
-  if (category) {
-    const catLower = category.toLowerCase();
-    if (catLower.includes("beach") || catLower.includes("biển")) {
-      return DESTINATION_FALLBACKS.beach[0];
-    }
-    if (catLower.includes("island") || catLower.includes("đảo")) {
-      return DESTINATION_FALLBACKS.island[0];
-    }
-    if (catLower.includes("mountain") || catLower.includes("núi")) {
-      return DESTINATION_FALLBACKS.mountain[0];
-    }
-    if (catLower.includes("city") || catLower.includes("thành phố")) {
-      return DESTINATION_FALLBACKS.city[0];
-    }
-    if (catLower.includes("nature") || catLower.includes("thiên nhiên")) {
-      return DESTINATION_FALLBACKS.nature[0];
-    }
-  }
-
-  // Try destination-based fallback
-  const destLower = destination.toLowerCase();
-  if (destLower.includes("phú quốc") || destLower.includes("côn đảo") || destLower.includes("con dao")) {
-    return DESTINATION_FALLBACKS.island[0];
-  }
-  if (destLower.includes("nha trang") || destLower.includes("phan thiết") || destLower.includes("vũng tàu")) {
-    return DESTINATION_FALLBACKS.beach[0];
-  }
-  if (destLower.includes("sapa") || destLower.includes("đà lạt")) {
-    return DESTINATION_FALLBACKS.mountain[0];
-  }
-  if (destLower.includes("hội an") || destLower.includes("huế") || destLower.includes("đà nẵng")) {
-    return DESTINATION_FALLBACKS.city[0];
-  }
-
-  // Default fallback
-  return "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=600";
-}
-
 function TourCard({ tour }: { tour: Tour }) {
-  const images = Array.isArray(tour.images) && tour.images.length > 0
-    ? tour.images
-    : [getFallbackImage(tour.destination, tour.category)];
+  const { isAuthenticated } = useAuthStore();
+  const [wishlisted, setWishlisted] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
-  const firstImage = typeof images[0] === "string"
-    ? images[0]
-    : (images[0] as { url: string }).url;
+  useEffect(() => {
+    // Check if tour is in wishlist on mount
+    const token = localStorage.getItem("tgpt_access");
+    if (token && isAuthenticated) {
+      wishlistApi.checkWishlist(tour.id, token).then((data) => {
+        setWishlisted(data.isInWishlist);
+      }).catch(() => {});
+    }
+  }, [tour.id, isAuthenticated]);
+
+  const handleToggleWishlist = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!isAuthenticated) {
+      window.location.href = "/login";
+      return;
+    }
+
+    const token = localStorage.getItem("tgpt_access");
+    if (!token) return;
+
+    setToggling(true);
+    try {
+      const data = await wishlistApi.toggleWishlist(tour.id, token);
+      setWishlisted(data.isInWishlist);
+    } catch (error) {
+      console.error("Failed to toggle wishlist:", error);
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  const images = Array.isArray(tour.images) && tour.images.length > 0
+    ? tour.images.map((img) => typeof img === "string" ? img : (img as { url: string }).url)
+    : [];
+
+  const firstImage = images[0] ?? getDestinationImage(tour.destination);
 
   const displayPrice = tour.discount_price ?? tour.price;
   const hasDiscount = !!tour.discount_price && tour.discount_price < tour.price;
@@ -449,13 +422,32 @@ function TourCard({ tour }: { tour: Tour }) {
           {/* Rating */}
           {tour.rating > 0 && (
             <div
-              className="absolute top-3 right-3 px-2.5 py-1 flex items-center gap-1 rounded-full text-[12px] font-bold text-white"
+              className="absolute top-3 right-12 px-2.5 py-1 flex items-center gap-1 rounded-full text-[12px] font-bold text-white"
               style={{ backgroundColor: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
             >
               <Star className="w-3.5 h-3.5 text-[#F8C700] fill-[#F8C700]" />
               {Number(tour.rating).toFixed(1)}
             </div>
           )}
+
+          {/* Wishlist button */}
+          <button
+            onClick={handleToggleWishlist}
+            disabled={toggling}
+            className={cn(
+              "absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer",
+              wishlisted
+                ? "bg-[#ED1D24] text-white hover:bg-[#D01830]"
+                : "bg-white/90 hover:bg-white text-[#636363] hover:text-[#ED1D24]"
+            )}
+            style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.15)" }}
+          >
+            {toggling ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Heart className={cn("w-4 h-4", wishlisted && "fill-current")} />
+            )}
+          </button>
 
           {/* Quick actions overlay */}
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
@@ -535,12 +527,10 @@ function TourCard({ tour }: { tour: Tour }) {
 // ─── Featured Tour Card ────────────────────────────────────────────────────────
 function FeaturedTourCard({ tour }: { tour: Tour }) {
   const images = Array.isArray(tour.images) && tour.images.length > 0
-    ? tour.images
-    : [getFallbackImage(tour.destination, tour.category)];
+    ? tour.images.map((img) => typeof img === "string" ? img : (img as { url: string }).url)
+    : [];
 
-  const firstImage = typeof images[0] === "string"
-    ? images[0]
-    : (images[0] as { url: string }).url;
+  const firstImage = images[0] ?? getDestinationImage(tour.destination);
 
   const displayPrice = tour.discount_price ?? tour.price;
   const hasDiscount = !!tour.discount_price && tour.discount_price < tour.price;
@@ -606,6 +596,201 @@ function FeaturedTourCard({ tour }: { tour: Tour }) {
   );
 }
 
+// ─── Filter Section Collapsible ────────────────────────────────────────────────
+function FilterSection({
+  title,
+  children,
+  defaultOpen = true,
+}: {
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border-b border-[#EEEEEE] last:border-0">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 text-[14px] font-bold text-[#000E1A] hover:bg-[#F7F7F7] transition-colors cursor-pointer"
+      >
+        {title}
+        {open ? (
+          <ChevronUp className="w-4 h-4 text-[#636363]" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-[#636363]" />
+        )}
+      </button>
+      {open && <div className="px-5 pb-5">{children}</div>}
+    </div>
+  );
+}
+
+// ─── Price Range Filter ────────────────────────────────────────────────────────
+function PriceRangeFilter({
+  min,
+  max,
+  onChange,
+}: {
+  min?: number;
+  max?: number;
+  onChange: (min?: number, max?: number) => void;
+}) {
+  const presets = [
+    { label: "Dưới 2 triệu", min: undefined, max: 2000000 },
+    { label: "2-5 triệu", min: 2000000, max: 5000000 },
+    { label: "5-10 triệu", min: 5000000, max: 10000000 },
+    { label: "Trên 10 triệu", min: 10000000, max: undefined },
+  ];
+  const isActive = (p: (typeof presets)[0]) =>
+    p.min === min && p.max === max;
+
+  return (
+    <div className="space-y-3">
+      {/* Preset chips */}
+      <div className="flex flex-wrap gap-2">
+        {presets.map((p) => (
+          <button
+            key={p.label}
+            onClick={() => onChange(p.min, p.max)}
+            className={cn(
+              "px-3 py-1.5 text-[12px] font-medium rounded-full border transition-all cursor-pointer",
+              isActive(p)
+                ? "bg-[#0046C1] text-white border-[#0046C1]"
+                : "bg-white text-[#636363] border-[#DDDDDD] hover:border-[#0046C1]"
+            )}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      {/* Custom range */}
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          placeholder="Từ (VNĐ)"
+          value={min || ""}
+          onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined, max)}
+          className="flex-1 h-9 px-3 text-[13px] border border-[#DDDDDD] rounded-lg focus:outline-none focus:border-[#0046C1]"
+        />
+        <span className="text-[#DDDDDD] text-sm">—</span>
+        <input
+          type="number"
+          placeholder="Đến (VNĐ)"
+          value={max || ""}
+          onChange={(e) => onChange(min, e.target.value ? Number(e.target.value) : undefined)}
+          className="flex-1 h-9 px-3 text-[13px] border border-[#DDDDDD] rounded-lg focus:outline-none focus:border-[#0046C1]"
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── Sidebar Filters ──────────────────────────────────────────────────────────
+function SidebarFilters({
+  filters,
+  onChange,
+  onClear,
+}: {
+  filters: TourSearchParams;
+  onChange: (f: Partial<TourSearchParams>) => void;
+  onClear: () => void;
+}) {
+  const hasActive =
+    filters.region || filters.category || filters.min_price || filters.max_price;
+
+  return (
+    <div className="w-64 flex-shrink-0 hidden lg:block">
+      <div className="sticky top-20 bg-white rounded-2xl border border-[#DDDDDD] shadow-sm overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#EEEEEE]">
+          <div className="flex items-center gap-2">
+            <Sliders className="w-4 h-4" style={{ color: PRIMARY }} />
+            <span className="font-bold text-[#000E1A]">Bộ lọc</span>
+            {hasActive && (
+              <span
+                className="w-5 h-5 text-[11px] font-bold text-white rounded-full flex items-center justify-center"
+                style={{ backgroundColor: PRIMARY }}
+              >
+                !
+              </span>
+            )}
+          </div>
+          {hasActive && (
+            <button
+              onClick={onClear}
+              className="text-[12px] text-[#ED1D24] hover:underline font-medium cursor-pointer"
+            >
+              Xóa tất cả
+            </button>
+          )}
+        </div>
+
+        {/* Region */}
+        <FilterSection title="Miền">
+          <div className="flex flex-col gap-1.5">
+            {REGIONS.map((r) => (
+              <button
+                key={r.value}
+                onClick={() =>
+                  onChange({ region: filters.region === r.value ? undefined : r.value })
+                }
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium transition-all cursor-pointer text-left",
+                  filters.region === r.value
+                    ? "bg-[#0046C1]/10 text-[#0046C1]"
+                    : "text-[#636363] hover:bg-[#F7F7F7]"
+                )}
+              >
+                <span>{r.icon}</span>
+                <span className="flex-1">{r.label}</span>
+                {filters.region === r.value && (
+                  <CheckCircle2 className="w-4 h-4" style={{ color: PRIMARY }} />
+                )}
+              </button>
+            ))}
+          </div>
+        </FilterSection>
+
+        {/* Category */}
+        <FilterSection title="Loại tour">
+          <div className="flex flex-wrap gap-2">
+            {CATEGORIES.map((c) => (
+              <button
+                key={c.value}
+                onClick={() =>
+                  onChange({ category: filters.category === c.value ? undefined : c.value })
+                }
+                className={cn(
+                  "px-3 py-1.5 text-[13px] font-medium rounded-full border transition-all cursor-pointer",
+                  filters.category === c.value
+                    ? "text-white"
+                    : "text-[#636363] border-[#DDDDDD] bg-white hover:border-[#0046C1]"
+                )}
+                style={
+                  filters.category === c.value
+                    ? { backgroundColor: c.color, borderColor: c.color }
+                    : {}
+                }
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </FilterSection>
+
+        {/* Price Range */}
+        <FilterSection title="Khoảng giá">
+          <PriceRangeFilter
+            min={filters.min_price}
+            max={filters.max_price}
+            onChange={(min, max) => onChange({ min_price: min, max_price: max })}
+          />
+        </FilterSection>
+      </div>
+    </div>
+  );
+}
+
 // ─── Mobile Filter Drawer ────────────────────────────────────────────────────
 function FilterDrawer({
   open,
@@ -634,17 +819,25 @@ function FilterDrawer({
         className="relative mt-auto bg-white rounded-t-3xl shadow-modal max-h-[85vh] flex flex-col overflow-hidden animate-slide-up"
       >
         <div className="flex items-center justify-between p-5 border-b border-[#EEEEEE]">
-          <h3 className="font-bold text-[18px] text-[#000E1A]">Bộ lọc nâng cao</h3>
-          <button
-            onClick={onClose}
-            className="w-9 h-9 flex items-center justify-center bg-[#F7F7F7] hover:bg-[#DDDDDD] rounded-full transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4 text-[#636363]" />
-          </button>
+          <h3 className="font-bold text-[18px] text-[#000E1A]">Bộ lọc</h3>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => { onClear(); setLocal({ sort_by: "rating", sort_order: "desc", page: 1, page_size: 12 }); }}
+              className="text-[13px] text-[#ED1D24] font-medium cursor-pointer"
+            >
+              Xóa lọc
+            </button>
+            <button
+              onClick={onClose}
+              className="w-9 h-9 flex items-center justify-center bg-[#F7F7F7] hover:bg-[#DDDDDD] rounded-full transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4 text-[#636363]" />
+            </button>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-6">
-          <div>
+        <div className="flex-1 overflow-y-auto divide-y divide-[#EEEEEE]">
+          <div className="p-5">
             <h4 className="text-[14px] font-bold text-[#000E1A] mb-3">Miền</h4>
             <div className="flex flex-wrap gap-2">
               {REGIONS.map((r) => (
@@ -654,18 +847,18 @@ function FilterDrawer({
                   className={cn(
                     "px-4 py-2.5 text-[14px] font-semibold border-2 rounded-full transition-all cursor-pointer",
                     local.region === r.value
-                      ? "text-white border-white"
+                      ? "text-white"
                       : "text-[#636363] border-[#DDDDDD] bg-white hover:border-[#0046C1]"
                   )}
                   style={local.region === r.value ? { backgroundColor: PRIMARY, borderColor: PRIMARY } : {}}
                 >
-                  {r.label}
+                  {r.icon} {r.label}
                 </button>
               ))}
             </div>
           </div>
 
-          <div>
+          <div className="p-5">
             <h4 className="text-[14px] font-bold text-[#000E1A] mb-3">Loại tour</h4>
             <div className="flex flex-wrap gap-2">
               {CATEGORIES.map((c) => (
@@ -685,6 +878,15 @@ function FilterDrawer({
               ))}
             </div>
           </div>
+
+          <div className="p-5">
+            <h4 className="text-[14px] font-bold text-[#000E1A] mb-3">Khoảng giá</h4>
+            <PriceRangeFilter
+              min={local.min_price}
+              max={local.max_price}
+              onChange={(min, max) => setLocal((l) => ({ ...l, min_price: min, max_price: max }))}
+            />
+          </div>
         </div>
 
         <div className="p-5 border-t border-[#EEEEEE] flex gap-3 bg-white">
@@ -692,26 +894,26 @@ function FilterDrawer({
             variant="outline"
             className="flex-1 h-12 text-[14px] font-semibold"
             style={{ borderRadius: "12px" }}
-            onClick={onClear}
+            onClick={onClose}
           >
-            Xóa lọc
+            Hủy
           </Button>
           <Button
             className="flex-1 h-12 text-[14px] font-bold text-white"
             style={{ borderRadius: "12px", backgroundColor: PRIMARY }}
             onClick={apply}
           >
-            Áp dụng
+            Xem tour
           </Button>
         </div>
       </div>
     </div>
   );
 }
-
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 function SearchPageContent() {
-  const [search, setSearch] = useState("");
+  const searchParams = useSearchParams();
+  const [search, setSearch] = useState(searchParams.get("search") || "");
   const [filters, setFilters] = useState<TourSearchParams>({
     sort_by: "rating",
     sort_order: "desc",
@@ -861,158 +1063,137 @@ function SearchPageContent() {
 
         {/* ── Search Header ── */}
         <div className="bg-white border-b border-[#EEEEEE] sticky top-16 z-40 shadow-sm">
-          <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-4">
-            {/* Category filters */}
-            <CategoryFilters
-              active={filters.category}
-              onChange={(v) => setFilters((f) => ({ ...f, category: v, page: 1 }))}
-            />
-
-            {/* Controls row */}
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <SortDropdown value={sortBy} onChange={setSortBy} />
-                <button
-                  onClick={() => setFilterOpen(true)}
-                  className="flex items-center gap-2 px-5 py-3 text-[14px] font-semibold rounded-xl border-2 border-[#DDDDDD] bg-white hover:border-[#0046C1] hover:bg-[#F7F7F7] transition-all cursor-pointer md:hidden"
-                >
-                  <Filter className="w-4 h-4 text-[#636363]" />
-                  Bộ lọc
-                  {activeFilters.length > 0 && (
-                    <span
-                      className="w-5 h-5 text-[11px] font-bold text-white rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: PRIMARY }}
-                    >
-                      {activeFilters.length}
-                    </span>
-                  )}
-                </button>
-              </div>
-
-              <div className="flex items-center gap-3">
-                {/* Desktop region chips */}
-                <div className="hidden md:flex items-center gap-2">
-                  {REGIONS.map((r) => (
-                    <button
-                      key={r.value}
-                      onClick={() => setFilters((f) => ({ ...f, region: f.region === r.value ? undefined : r.value, page: 1 }))}
-                      className={cn(
-                        "px-4 py-2 text-[13px] font-semibold rounded-full border-2 transition-all cursor-pointer",
-                        filters.region === r.value
-                          ? "text-white"
-                          : "text-[#636363] border-[#DDDDDD] bg-white hover:border-[#0046C1]"
-                      )}
-                      style={filters.region === r.value ? { backgroundColor: PRIMARY, borderColor: PRIMARY } : {}}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
-
-                <p className="text-[13px] text-[#636363] font-medium flex-shrink-0">
-                  {loading ? "..." : total > 0 ? `${total.toLocaleString()} tour` : ""}
-                </p>
-              </div>
+          <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex items-center gap-3">
+              <SortDropdown value={sortBy} onChange={setSortBy} />
+              <button
+                onClick={() => setFilterOpen(true)}
+                className="flex items-center gap-2 px-5 py-3 text-[14px] font-semibold rounded-xl border-2 border-[#DDDDDD] bg-white hover:border-[#0046C1] hover:bg-[#F7F7F7] transition-all cursor-pointer"
+              >
+                <SlidersHorizontal className="w-4 h-4 text-[#636363]" />
+                Bộ lọc
+                {activeFilters.length > 0 && (
+                  <span
+                    className="w-5 h-5 text-[11px] font-bold text-white rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: PRIMARY }}
+                  >
+                    {activeFilters.length}
+                  </span>
+                )}
+              </button>
+              <p className="text-[13px] text-[#636363] font-medium flex-shrink-0 ml-auto">
+                {loading ? "..." : total > 0 ? `${total.toLocaleString()} tour` : ""}
+              </p>
             </div>
-
             {/* Active filter chips */}
             {activeFilters.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 mt-3">
                 {activeFilters.map((f) => (
                   <FilterChip
                     key={f}
                     label={f}
                     onRemove={() => {
                       if (REGIONS.find((r) => r.label === f)) setFilters((fl) => ({ ...fl, region: undefined, page: 1 }));
-                      else setFilters((fl) => ({ ...fl, category: undefined, page: 1 }));
+                      else if (CATEGORIES.find((c) => c.label === f)) setFilters((fl) => ({ ...fl, category: undefined, page: 1 }));
+                      else setFilters((fl) => ({ ...fl, min_price: undefined, max_price: undefined, page: 1 }));
                     }}
                   />
                 ))}
-                {hasActiveFilters && (
-                  <button
-                    onClick={() => { setFilters({ sort_by: "rating", sort_order: "desc", page: 1, page_size: 12 }); setSearch(""); }}
-                    className="text-[12px] text-[#636363] hover:text-[#ED1D24] transition-colors cursor-pointer underline"
-                  >
-                    Xóa tất cả
-                  </button>
-                )}
+                <button
+                  onClick={() => { setFilters({ sort_by: "rating", sort_order: "desc", page: 1, page_size: 12 }); setSearch(""); }}
+                  className="text-[12px] text-[#636363] hover:text-[#ED1D24] transition-colors cursor-pointer underline"
+                >
+                  Xóa tất cả
+                </button>
               </div>
             )}
           </div>
         </div>
 
-        {/* ── Tour Grid ── */}
-        <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-10">
-          {loading ? (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <TourCardSkeleton key={i} />
-              ))}
-            </div>
-          ) : tours.length === 0 ? (
-            <div className="py-20">
-              <EmptyState
-                icon={Search}
-                title="Không tìm thấy tour nào"
-                description="Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm"
-                action={
-                  <Button
-                    variant="outline"
-                    onClick={() => { setFilters({ sort_by: "rating", sort_order: "desc", page: 1, page_size: 12 }); setSearch(""); }}
-                    style={{ borderRadius: "12px" }}
-                  >
-                    Xóa bộ lọc
-                  </Button>
-                }
-              />
-            </div>
-          ) : (
-            <>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                {tours.map((tour) => (
-                  <TourCard key={tour.id} tour={tour} />
-                ))}
-              </div>
+        {/* ── Tour Grid with Sidebar ── */}
+        <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex gap-8">
+            {/* Sidebar filters — desktop */}
+            <SidebarFilters
+              filters={filters}
+              onChange={(f) => setFilters((prev) => ({ ...prev, ...f, page: 1 }))}
+              onClear={() => { setFilters({ sort_by: "rating", sort_order: "desc", page: 1, page_size: 12 }); setSearch(""); }}
+            />
 
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2 mt-12">
-                  <button
-                    onClick={() => setFilters((f) => ({ ...f, page: Math.max(1, f.page ? (Number(f.page) as number) - 1 : 1) }))}
-                    disabled={page <= 1}
-                    className="w-10 h-10 flex items-center justify-center rounded-xl border-2 border-[#DDDDDD] bg-white text-[14px] font-bold text-[#636363] hover:border-[#0046C1] hover:text-[#0046C1] disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
-                  >
-                    ‹
-                  </button>
-
-                  {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
-                    const p = i + 1;
-                    const isActive = p === page;
-                    return (
-                      <button
-                        key={p}
-                        onClick={() => setFilters((f) => ({ ...f, page: p }))}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl text-[14px] font-bold transition-all cursor-pointer"
-                        style={isActive
-                          ? { backgroundColor: PRIMARY, color: "#FFFFFF", border: `2px solid ${PRIMARY}` }
-                          : { backgroundColor: "#FFFFFF", color: "#636363", border: "2px solid #DDDDDD" }}
-                      >
-                        {p}
-                      </button>
-                    );
-                  })}
-
-                  <button
-                    onClick={() => setFilters((f) => ({ ...f, page: Math.min(totalPages, f.page ? (Number(f.page) as number) + 1 : 2) }))}
-                    disabled={page >= totalPages}
-                    className="w-10 h-10 flex items-center justify-center rounded-xl border-2 border-[#DDDDDD] bg-white text-[14px] font-bold text-[#636363] hover:border-[#0046C1] hover:text-[#0046C1] disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
-                  >
-                    ›
-                  </button>
+            {/* Grid */}
+            <div className="flex-1 min-w-0">
+              {loading ? (
+                <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                  {Array.from({ length: 9 }).map((_, i) => (
+                    <TourCardSkeleton key={i} />
+                  ))}
                 </div>
+              ) : tours.length === 0 ? (
+                <div className="py-20">
+                  <EmptyState
+                    icon={Search}
+                    title="Không tìm thấy tour nào"
+                    description="Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm"
+                    action={
+                      <Button
+                        variant="outline"
+                        onClick={() => { setFilters({ sort_by: "rating", sort_order: "desc", page: 1, page_size: 12 }); setSearch(""); }}
+                        style={{ borderRadius: "12px" }}
+                      >
+                        Xóa bộ lọc
+                      </Button>
+                    }
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                    {tours.map((tour) => (
+                      <TourCard key={tour.id} tour={tour} />
+                    ))}
+                  </div>
+
+                  {/* Pagination */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 mt-12">
+                      <button
+                        onClick={() => setFilters((f) => ({ ...f, page: Math.max(1, (Number(f.page) || 1) - 1) }))}
+                        disabled={page <= 1}
+                        className="w-10 h-10 flex items-center justify-center rounded-xl border-2 border-[#DDDDDD] bg-white text-[14px] font-bold text-[#636363] hover:border-[#0046C1] hover:text-[#0046C1] disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                      >
+                        ‹
+                      </button>
+
+                      {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                        const p = i + 1;
+                        const isActive = p === page;
+                        return (
+                          <button
+                            key={p}
+                            onClick={() => setFilters((f) => ({ ...f, page: p }))}
+                            className="w-10 h-10 flex items-center justify-center rounded-xl text-[14px] font-bold transition-all cursor-pointer"
+                            style={isActive
+                              ? { backgroundColor: PRIMARY, color: "#FFFFFF", border: `2px solid ${PRIMARY}` }
+                              : { backgroundColor: "#FFFFFF", color: "#636363", border: "2px solid #DDDDDD" }}
+                          >
+                            {p}
+                          </button>
+                        );
+                      })}
+
+                      <button
+                        onClick={() => setFilters((f) => ({ ...f, page: Math.min(totalPages, (Number(f.page) || 1) + 1) }))}
+                        disabled={page >= totalPages}
+                        className="w-10 h-10 flex items-center justify-center rounded-xl border-2 border-[#DDDDDD] bg-white text-[14px] font-bold text-[#636363] hover:border-[#0046C1] hover:text-[#0046C1] disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                      >
+                        ›
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
-            </>
-          )}
+            </div>
+          </div>
         </div>
       </main>
 

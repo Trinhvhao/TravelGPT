@@ -9,7 +9,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import type { ApiError } from "@/types";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3008/api/v1";
 
 // ── Storage helpers (avoids circular imports) ────────────────────────────────
 export const storage = {

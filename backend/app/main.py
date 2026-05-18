@@ -12,7 +12,7 @@ from app.core.error_handler import register_exception_handlers
 from app.core.session import close_session_store
 from app.core.token_blacklist import close_blacklist_service
 from app.core.llm_client import close_llm_client
-from app.api.v1 import auth, tours, bookings, users, chat, payments
+from app.api.v1 import auth, tours, bookings, users, chat, payments, admin_knowledge, wishlist
 
 settings = get_settings()
 
@@ -35,6 +35,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Embedding service startup skipped: {e}")
+
+    # Startup knowledge embedding service — index all knowledge base
+    try:
+        from app.services.knowledge_embedding_service import reindex_knowledge_on_startup
+        from app.core.prisma import db
+        kb_counts = await reindex_knowledge_on_startup(db)
+        import logging
+        logging.getLogger(__name__).info(f"Knowledge base: indexed {kb_counts}")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Knowledge embedding service startup skipped: {e}")
 
     # Setup API docs
     setup_api_docs(app)
@@ -66,7 +77,14 @@ register_exception_handlers(app)
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://127.0.0.1:3002",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -82,6 +100,8 @@ app.include_router(bookings.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(payments.router, prefix="/api/v1")
+app.include_router(admin_knowledge.router, prefix="/api/v1")
+app.include_router(wishlist.router, prefix="/api/v1")
 
 
 @app.get("/")

@@ -48,7 +48,7 @@ async def list_my_bookings(
 ):
     booking_service = BookingService(db)
     bookings, total = await booking_service.list_user_bookings(
-        current_user.id, page, page_size
+        current_user.id, page, page_size, include_tour=True
     )
     
     return BookingListResponse(

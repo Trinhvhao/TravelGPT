@@ -5,6 +5,7 @@ import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/utils";
 import { tourApi } from "@/lib/tour-api";
+import { getDestinationImage } from "@/lib/destination-images";
 import type { Tour } from "@/types";
 import { Clock, TrendingDown } from "lucide-react";
 
@@ -38,7 +39,7 @@ function DealCard({ tour }: { tour: Tour }) {
   const images = Array.isArray(tour.images) ? tour.images : [];
   const img = images[0] && typeof images[0] === "string"
     ? images[0] as string
-    : "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=600";
+    : getDestinationImage(tour.destination);
 
   const displayPrice = tour.discount_price ?? tour.price;
   const originalPrice = Number(tour.price);

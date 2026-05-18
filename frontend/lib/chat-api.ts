@@ -72,7 +72,7 @@ export const chatApi = {
     request: ChatRequest,
     callbacks: ChatStreamCallbacks
   ): Promise<() => void> => {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3008/api/v1";
     const token = storage.getAccessToken();
 
     const controller = new AbortController();

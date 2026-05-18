@@ -576,7 +576,31 @@ class RecommendationEngine:
                 "Đặt tour cho nhóm 5 người",
                 "Ngày khởi hành gần nhất"
             ])
-        
+
+        elif intent == "weather_inquiry":
+            dest = context.get("destination", "")
+            suggestions.extend([
+                "Thời tiết ở đó có nắng không?",
+                "Nên mang theo gì?",
+                "Tháng nào đi là đẹp nhất?"
+            ])
+            if dest:
+                suggestions.append(f"Thời tiết {dest} ngày mai thế nào?")
+
+        elif intent == "cancel_booking":
+            suggestions.extend([
+                "Chính sách hoàn tiền như nào?",
+                "Tôi muốn đổi ngày thay vì hủy",
+                "Booking của tôi ở đâu?"
+            ])
+
+        elif intent == "compare_tour":
+            suggestions.extend([
+                "So sánh giá 2 tour này",
+                "Tour nào phù hợp gia đình hơn?",
+                "Điểm khác nhau chính là gì?"
+            ])
+
         # If no suggestions, provide default ones
         if not suggestions:
             suggestions = [

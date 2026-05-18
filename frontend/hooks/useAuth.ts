@@ -53,6 +53,16 @@ export function useAuth() {
     [setUser, setLoading]
   );
 
+  const demoLogin = useCallback(async (): Promise<void> => {
+    setLoading(true);
+    try {
+      const res = await authApi.demoLogin();
+      setUser(res.user);
+    } finally {
+      setLoading(false);
+    }
+  }, [setUser, setLoading]);
+
   const register = useCallback(
     async (data: { email: string; password: string; full_name: string; phone?: string }): Promise<User> => {
       setLoading(true);
@@ -88,6 +98,7 @@ export function useAuth() {
     isLoading,
     isAdmin: user?.role === "ADMIN",
     login,
+    demoLogin,
     register,
     logout,
     updateProfile,

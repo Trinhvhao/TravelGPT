@@ -25,6 +25,14 @@ import {
   ExternalLink,
   ChevronRight,
 } from "lucide-react";
+import { TourCardBlock } from "./tour-card-block";
+import { TourCarouselBlock } from "./tour-carousel-block";
+import { WeatherBlock } from "./weather-block";
+import { BookingFormBlock, BookingPreviewBlock } from "./booking-form-block";
+import { ActionButtonBlock, ImageBlock } from "./action-button-block";
+import { SuggestionBlock } from "./suggestion-block";
+import { PreTripCard } from "./pre-trip-card";
+import { PostTripCard } from "./post-trip-card";
 
 const PRIMARY = "#0046C1";
 const ACCENT = "#0391FF";
@@ -37,8 +45,8 @@ function TextBlock({ content }: { content: string }) {
   return <span>{content}</span>;
 }
 
-// ─── Image Block ────────────────────────────────────────────────────────────
-function ImageBlock({ block }: { block: ContentBlockImage }) {
+// ─── Image Block (basic display - for gallery/table contexts) ────────
+function LegacyImageBlock({ block }: { block: ContentBlockImage }) {
   return (
     <div className="my-3">
       <div className="relative rounded-xl overflow-hidden max-w-md">
@@ -282,7 +290,7 @@ export function renderContentBlocks(blocks: ContentBlock[]): React.ReactNode {
       case "text":
         return <TextBlock key={idx} content={block.content} />;
       case "image":
-        return <ImageBlock key={idx} block={block} />;
+        return <LegacyImageBlock key={idx} block={block} />;
       case "gallery":
         return <GalleryBlock key={idx} block={block} />;
       case "table":
@@ -295,6 +303,24 @@ export function renderContentBlocks(blocks: ContentBlock[]): React.ReactNode {
         return <StatsBlock key={idx} block={block} />;
       case "alert":
         return <AlertBlock key={idx} block={block} />;
+      case "tour_card":
+        return <TourCardBlock key={idx} block={block} />;
+      case "tour_carousel":
+        return <TourCarouselBlock key={idx} block={block} />;
+      case "weather":
+        return <WeatherBlock key={idx} block={block} />;
+      case "booking_form":
+        return <BookingFormBlock key={idx} block={block} />;
+      case "booking_preview":
+        return <BookingPreviewBlock key={idx} block={block} />;
+      case "action_button":
+        return <ActionButtonBlock key={idx} block={block} />;
+      case "suggestion":
+        return <SuggestionBlock key={idx} block={block} />;
+      case "pre_trip":
+        return <PreTripCard key={idx} block={block} />;
+      case "post_trip":
+        return <PostTripCard key={idx} block={block} />;
       default:
         return null;
     }

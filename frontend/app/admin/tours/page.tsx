@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatPrice } from "@/lib/utils";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import {
   Plus,
   Edit,
@@ -227,6 +228,11 @@ export default function AdminToursPage() {
   const [regionFilter, setRegionFilter] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editingTour, setEditingTour] = useState<Tour | undefined>(undefined);
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; tourId: string | null; loading: boolean }>({
+    open: false,
+    tourId: null,
+    loading: false,
+  });
 
   const fetchTours = async () => {
     setLoading(true);
@@ -250,15 +256,22 @@ export default function AdminToursPage() {
 
   useEffect(() => { fetchTours(); }, [page, search, regionFilter]);
 
-  const handleDelete = async (tourId: string) => {
-    if (!confirm("Bạn có chắc muốn xóa tour này?")) return;
+  const handleDelete = async () => {
+    if (!confirmDelete.tourId) return;
+    setConfirmDelete((prev) => ({ ...prev, loading: true }));
     try {
-      await api.delete(`/tours/${tourId}`);
+      await api.delete(`/tours/${confirmDelete.tourId}`);
       toast.success("Xóa tour thành công");
+      setConfirmDelete({ open: false, tourId: null, loading: false });
       fetchTours();
     } catch {
       toast.error("Xóa tour thất bại");
+      setConfirmDelete((prev) => ({ ...prev, loading: false }));
     }
+  };
+
+  const openConfirmDelete = (tourId: string) => {
+    setConfirmDelete({ open: true, tourId, loading: false });
   };
 
   const handleToggleFeatured = async (tour: Tour) => {
@@ -475,7 +488,7 @@ export default function AdminToursPage() {
                           <Edit className="w-4 h-4" style={{ color: PRIMARY }} />
                         </button>
                         <button
-                          onClick={() => handleDelete(tour.id)}
+                          onClick={() => openConfirmDelete(tour.id)}
                           className="w-8 h-8 rounded-lg bg-[#FEF2F2] flex items-center justify-center hover:bg-[#FECACA] transition-colors cursor-pointer"
                           title="Xóa"
                         >
@@ -543,6 +556,19 @@ export default function AdminToursPage() {
           onSuccess={() => { setShowModal(false); fetchTours(); }}
         />
       )}
+
+      {/* Confirm Delete Modal */}
+      <ConfirmModal
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete((prev) => ({ ...prev, open }))}
+        title="Xóa tour"
+        description="Bạn có chắc muốn xóa tour này? Hành động này không thể hoàn tác."
+        confirmText="Xóa"
+        cancelText="Hủy"
+        onConfirm={handleDelete}
+        variant="danger"
+        loading={confirmDelete.loading}
+      />
     </div>
   );
 }

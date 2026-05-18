@@ -112,6 +112,10 @@ export function TestimonialsSection() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const autoplayRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const CARD_WIDTH = 320;
+  const GAP = 20;
+  const SLOT = CARD_WIDTH + GAP;
+
   const startAutoplay = () => {
     autoplayRef.current = setInterval(() => {
       setActiveIdx((i) => (i + 1) % TESTIMONIALS.length);
@@ -129,6 +133,11 @@ export function TestimonialsSection() {
 
   const scrollTo = (idx: number) => {
     setActiveIdx(idx);
+    if (scrollRef.current) {
+      const containerWidth = scrollRef.current.offsetWidth;
+      const offset = idx * SLOT - (containerWidth - CARD_WIDTH) / 2;
+      scrollRef.current.scrollTo({ left: offset, behavior: "smooth" });
+    }
     stopAutoplay();
     startAutoplay();
   };
@@ -174,18 +183,16 @@ export function TestimonialsSection() {
           {/* Cards */}
           <div
             ref={scrollRef}
-            className="overflow-hidden mx-12"
+            className="overflow-x-auto scroll-smooth snap-x snap-mandatory scrollbar-hide mx-12"
+            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
           >
-            <div
-              className="flex gap-5 transition-transform duration-500"
-              style={{ transform: `translateX(0)` }}
-            >
+            <div className="flex gap-5 w-max py-2">
               {/* Show 3 cards centered: active + prev + next */}
               {TESTIMONIALS.map((t, idx) => (
                 <div
                   key={t.id}
                   className={cn(
-                    "transition-all duration-500",
+                    "snap-center transition-all duration-500",
                     idx === activeIdx ? "opacity-100 scale-100" : "opacity-40 scale-95"
                   )}
                   onClick={() => scrollTo(idx)}

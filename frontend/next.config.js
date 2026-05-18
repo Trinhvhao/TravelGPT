@@ -6,17 +6,15 @@ const nextConfig = {
         protocol: 'https',
         hostname: '**',
       },
+      {
+        protocol: 'https',
+        hostname: 'culturemagazin.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.agoda.com',
+      },
     ],
-  },
-  // Persistent disk cache — tránh recompile 2310 modules mỗi reload
-  cache: {
-    build: 'persistent',
-  },
-  experimental: {
-    // Turbopack persistent cache (Next.js 15+)
-    turbo: {
-      cache: {},
-    },
   },
 }
 

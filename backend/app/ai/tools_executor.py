@@ -6,12 +6,15 @@ The LLM decides which tools to call; this class executes them.
 """
 import json
 import logging
+import re
+from datetime import datetime, timedelta
 from typing import Any, Optional
 from prisma import Prisma
 
 from app.core.llm_client import ToolCall, ToolCallsResult
 from app.services.tour_service import TourService
 from app.services.booking_service import BookingService
+from app.services.weather_service import get_weather_service
 from app.services.web_search_service import get_web_search_service, WebSearchService
 from app.schemas.tour import TourFilter, Region
 
@@ -31,6 +34,7 @@ class ToolExecutor:
         self.tour_service = TourService(db)
         self.booking_service = BookingService(db)
         self.web_search = get_web_search_service()
+        self._weather_svc = None
 
     def _parse_args(self, raw_args: Any) -> dict:
         """Parse tool arguments — handles JSON string or dict."""
@@ -90,6 +94,18 @@ class ToolExecutor:
                 tours, total = await self.tour_service.list_tours(
                     filters, page=1, page_size=page_size
                 )
+            
+            # Fallback: If no results, try fuzzy search with the query/destination
+            if not tours and (args.get("query") or args.get("destination") or args.get("search")):
+                fallback_query = args.get("query") or args.get("destination") or args.get("search") or ""
+                fuzzy_tours = await self.tour_service.fuzzy_search_tours(
+                    query=fallback_query,
+                    limit=limit
+                )
+                if fuzzy_tours:
+                    logger.info(f"Fuzzy search fallback: found {len(fuzzy_tours)} tours for '{fallback_query}'")
+                    tours = fuzzy_tours
+                    total = len(fuzzy_tours)
 
             tour_results = []
             for t in tours:
@@ -113,6 +129,10 @@ class ToolExecutor:
                     "rating": float(t.rating) if t.rating else 0,
                     "review_count": t.reviewCount,
                     "is_featured": t.isFeatured,
+                    # Rich content: populate images for chat display
+                    "images": self._extract_tour_images(t.images),
+                    "category": t.category,
+                    "highlights": t.highlights if isinstance(t.highlights, list) else [],
                 })
 
             return {
@@ -165,6 +185,12 @@ class ToolExecutor:
                 "review_count": tour.reviewCount,
                 "is_featured": tour.isFeatured,
                 "is_active": tour.isActive,
+                # Rich content
+                "images": self._extract_tour_images(tour.images),
+                "highlights": tour.highlights if isinstance(tour.highlights, list) else [],
+                "includes": tour.includes if isinstance(tour.includes, list) else [],
+                "excludes": tour.excludes if isinstance(tour.excludes, list) else [],
+                "departure_dates": tour.departureDates if isinstance(tour.departureDates, list) else [],
             }
         except Exception as e:
             logger.error(f"get_tour_details tool error: {e}", exc_info=True)
@@ -283,6 +309,253 @@ class ToolExecutor:
             logger.error(f"web_search_travel tool error: {e}", exc_info=True)
             return {"results": [], "total": 0, "error": str(e)}
 
+    @property
+    def _weather_service(self):
+        """Lazy-load weather service to avoid import overhead."""
+        if self._weather_svc is None:
+            from app.services.weather_service import get_weather_async
+            self._weather_svc = get_weather_async
+        return self._weather_svc
+
+    async def execute_show_tour_cards(self, args: dict) -> dict:
+        """Execute show_tour_cards tool — returns structured block data for frontend."""
+        try:
+            tours = args.get("tours", [])
+            message = args.get("message", "")
+
+            if not tours:
+                return {
+                    "cards": [],
+                    "message": message,
+                    "total": 0,
+                    "status": "no_tours"
+                }
+
+            cards = []
+            for t in tours:
+                price = t.get("price") or 0
+                discount = t.get("discount_price")
+                image = t.get("image") or (t.get("images", [None])[0] if t.get("images") else None)
+
+                price_str = f"{float(price):,.0f}".replace(",", ".")
+                discount_str = f"{float(discount):,.0f}".replace(",", ".") if discount else None
+
+                cards.append({
+                    "id": t.get("id", ""),
+                    "name": t.get("name", "Tour không tên"),
+                    "slug": t.get("slug", ""),
+                    "destination": t.get("destination", ""),
+                    "duration": t.get("duration", ""),
+                    "price": price,
+                    "discount_price": discount,
+                    "price_display": f"~~{price_str}đ~~ **{discount_str}đ**" if discount_str else f"**{price_str}đ**",
+                    "image": image,
+                    "rating": t.get("rating", 0),
+                    "review_count": t.get("review_count", 0),
+                    "short_description": t.get("short_description", ""),
+                    "is_featured": t.get("is_featured", False),
+                    "category": t.get("category", ""),
+                    "highlights": t.get("highlights", [])[:3],
+                })
+
+            return {
+                "cards": cards,
+                "message": message,
+                "total": len(cards),
+                "status": "display_cards"
+            }
+        except Exception as e:
+            logger.error(f"show_tour_cards tool error: {e}", exc_info=True)
+            return {"cards": [], "total": 0, "error": str(e)}
+
+    async def execute_get_weather(self, args: dict) -> dict:
+        """Execute get_weather tool."""
+        try:
+            destination = args.get("destination")
+            date = args.get("date")
+
+            if not destination:
+                return {"error": "Cần cung cấp destination"}
+
+            weather_data = await self._weather_service(destination, date)
+
+            return {
+                "weather": weather_data,
+                "status": "display_weather"
+            }
+        except Exception as e:
+            logger.error(f"get_weather tool error: {e}", exc_info=True)
+            return {"error": str(e)}
+
+    async def execute_get_post_trip_summary(self, args: dict) -> dict:
+        """Execute get_post_trip_summary tool — fetches real booking data and computes loyalty."""
+        try:
+            booking_code = args.get("booking_code")
+            user_id = args.get("user_id", "anonymous")
+
+            # Resolve booking from DB if code is provided
+            booking = None
+            if booking_code:
+                booking = await self.db.booking.find_unique(
+                    where={"bookingCode": booking_code},
+                    include={"tour": True, "user": True}
+                )
+            elif user_id and user_id != "anonymous":
+                # Fallback: get most recent completed/confirmed booking for user
+                recent = await self.db.booking.find_many(
+                    where={"userId": user_id},
+                    include={"tour": True},
+                    order={"createdAt": "desc"},
+                    take=1
+                )
+                if recent:
+                    booking = recent[0]
+
+            # Extract real data from booking, or fall back to args
+            from app.ai.trip_support import PostTripSupport
+
+            if booking:
+                tour = booking.tour
+                total_price = float(booking.totalPrice) if booking.totalPrice else 0
+
+                # Check if this is user's first booking
+                user_bookings_count = await self.db.booking.count(
+                    where={"userId": booking.userId}
+                )
+                is_first_booking = user_bookings_count <= 1
+
+                num_adults = booking.numAdults or 1
+                num_children = booking.numChildren or 0
+                departure_date = (
+                    booking.departureDate.strftime("%Y-%m-%d")
+                    if booking.departureDate
+                    else None
+                )
+                # Compute return date from tour duration
+                return_date = None
+                if tour and departure_date:
+                    try:
+                        dur_str = tour.duration or "3 ngày 2 đêm"
+                        m = re.search(r"(\d+)\s*ngày", dur_str)
+                        if m:
+                            days = int(m.group(1))
+                            dep = datetime.strptime(departure_date, "%Y-%m-%d")
+                            return_date = (dep + timedelta(days=days)).strftime("%Y-%m-%d")
+                    except Exception:
+                        pass
+
+                loyalty = PostTripSupport.calculate_loyalty_points(
+                    num_adults=num_adults,
+                    num_children=num_children,
+                    total_spent=total_price,
+                    is_first_booking=is_first_booking
+                )
+
+                return {
+                    "status": "display_post_trip",
+                    "booking_code": booking.bookingCode,
+                    "tour_name": tour.name if tour else "Tour của bạn",
+                    "destination": tour.destination if tour else None,
+                    "departure_date": departure_date,
+                    "return_date": return_date,
+                    "num_adults": num_adults,
+                    "num_children": num_children,
+                    "total_spent": total_price,
+                    "is_first_booking": is_first_booking,
+                    "loyalty_points": loyalty["earned_points"],
+                    "loyalty_tier": loyalty["tier"],
+                    "loyalty_benefits": loyalty["benefits"],
+                    "points_to_next_tier": loyalty["points_to_next_tier"],
+                    "feedback_survey": PostTripSupport.generate_feedback_survey(
+                        booking.bookingCode,
+                        tour.name if tour else "Tour của bạn"
+                    ),
+                    "review_prompt": PostTripSupport.generate_review_prompt(
+                        tour.name if tour else "Tour của bạn",
+                        tour.destination if tour else ""
+                    ),
+                    "return_reminder": PostTripSupport.get_return_reminders(
+                        tour.name if tour else "Tour của bạn",
+                        datetime.now()
+                    ) if not return_date else PostTripSupport.get_return_reminders(
+                        tour.name if tour else "Tour của bạn",
+                        datetime.strptime(return_date, "%Y-%m-%d") if return_date else datetime.now()
+                    ),
+                }
+            else:
+                # No booking found — use args directly (e.g. demo mode)
+                from app.ai.trip_support import PostTripSupport
+
+                num_adults = args.get("num_adults", 1)
+                num_children = args.get("num_children", 0)
+                total_spent = args.get("total_spent", 0)
+                is_first = args.get("is_first_booking", False)
+
+                loyalty = PostTripSupport.calculate_loyalty_points(
+                    num_adults=num_adults,
+                    num_children=num_children,
+                    total_spent=total_spent,
+                    is_first_booking=is_first
+                )
+
+                return {
+                    "status": "display_post_trip",
+                    "booking_code": booking_code or "DEMO",
+                    "tour_name": args.get("tour_name", "Tour Demo"),
+                    "destination": args.get("destination"),
+                    "departure_date": args.get("departure_date"),
+                    "return_date": args.get("return_date"),
+                    "num_adults": num_adults,
+                    "num_children": num_children,
+                    "total_spent": total_spent,
+                    "is_first_booking": is_first,
+                    "loyalty_points": loyalty["earned_points"],
+                    "loyalty_tier": loyalty["tier"],
+                    "loyalty_benefits": loyalty["benefits"],
+                    "points_to_next_tier": loyalty["points_to_next_tier"],
+                    "feedback_survey": None,
+                    "review_prompt": None,
+                    "return_reminder": None,
+                    "warning": "Dữ liệu booking không tìm thấy trong hệ thống. Hiển thị dữ liệu mẫu."
+                }
+        except Exception as e:
+            logger.error(f"get_post_trip_summary tool error: {e}", exc_info=True)
+            return {"error": str(e)}
+
+    async def execute_search_knowledge(self, args: dict) -> dict:
+        """Execute search_knowledge tool - search knowledge base for safety, policies, FAQs, etc."""
+        try:
+            from app.ai.tools.knowledge_retriever import execute_knowledge_search
+
+            query = args.get("query", "")
+            kb_type = args.get("kb_type", "all")
+            destination = args.get("destination")
+            top_k = args.get("top_k", 3)
+
+            if not query:
+                return {"error": "Query is required"}
+
+            # Execute semantic search
+            context = await execute_knowledge_search(
+                query=query,
+                kb_type=kb_type,
+                destination=destination,
+                top_k=top_k,
+            )
+
+            return {
+                "status": "success",
+                "query": query,
+                "kb_type": kb_type,
+                "destination": destination,
+                "context": context,
+                "message": f"Đã tìm thấy thông tin liên quan đến: {query}"
+            }
+
+        except Exception as e:
+            logger.error(f"search_knowledge tool error: {e}", exc_info=True)
+            return {"error": str(e)}
+
     async def execute_tool(self, tool_call: ToolCall) -> dict:
         """Execute a single tool call by name."""
         name = tool_call.name
@@ -298,6 +571,14 @@ class ToolExecutor:
             return await self.execute_cancel_booking(args)
         elif name == "web_search_travel":
             return await self.execute_web_search_travel(args)
+        elif name == "show_tour_cards":
+            return await self.execute_show_tour_cards(args)
+        elif name == "get_weather":
+            return await self.execute_get_weather(args)
+        elif name == "get_post_trip_summary":
+            return await self.execute_get_post_trip_summary(args)
+        elif name == "search_knowledge":
+            return await self.execute_search_knowledge(args)
         else:
             logger.warning(f"Unknown tool: {name}")
             return {"error": f"Unknown tool: {name}"}
@@ -312,7 +593,7 @@ class ToolExecutor:
         for tc in tool_calls:
             # Inject user_id for tools that need it
             args = self._parse_args(tc.arguments)
-            if tc.name in ("get_user_bookings", "cancel_booking") and not args.get("user_id"):
+            if tc.name in ("get_user_bookings", "cancel_booking", "get_post_trip_summary") and not args.get("user_id"):
                 args["user_id"] = user_id
 
             result = await self.execute_tool(tc)
@@ -322,6 +603,28 @@ class ToolExecutor:
                 "result": result
             })
         return results
+
+    def _extract_tour_images(self, images_field) -> list[str]:
+        """Extract image URLs from tour.images JSON field."""
+        if not images_field:
+            return []
+        if isinstance(images_field, list):
+            urls = []
+            for item in images_field:
+                if isinstance(item, str):
+                    urls.append(item)
+                elif isinstance(item, dict):
+                    url = item.get("url") or item.get("src")
+                    if url:
+                        urls.append(url)
+            return urls
+        if isinstance(images_field, str):
+            try:
+                parsed = json.loads(images_field)
+                return self._extract_tour_images(parsed)
+            except json.JSONDecodeError:
+                return [images_field]
+        return []
 
     def extract_tours_from_results(self, tool_results: list[dict]) -> list[dict]:
         """Extract tour data from tool results for the SSE complete event."""

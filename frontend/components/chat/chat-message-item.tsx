@@ -7,26 +7,55 @@ import { vi } from "date-fns/locale";
 import {
   Bot,
   User,
-  Sparkles,
   ThumbsUp,
   ThumbsDown,
   Copy,
   Check,
   Bookmark,
   BookmarkCheck,
-  MoreHorizontal,
   Edit2,
   Loader2,
   Globe,
-  X,
 } from "lucide-react";
 import { useChatStore, CHAT_PRIMARY, CHAT_ACCENT, CHAT_SURFACE_LIGHT, CHAT_GRAY } from "@/stores/chat-store";
 import toast from "react-hot-toast";
 import { renderContent } from "@/lib/render-content";
 import { renderContentBlocks } from "@/components/chat/rich-content-blocks";
-import type { ContentBlock, ImageAttachment } from "@/types/chat";
 
-// ─── ChatMessageItem ─────────────────────────────────────────────────────────────
+/** Check if content_blocks contains tour cards (to avoid duplicate display) */
+function hasTourCards(blocks?: Array<{ type: string }>): boolean {
+  if (!blocks) return false;
+  return blocks.some((b) => b.type === "tour_card" || b.type === "tour_carousel");
+}
+
+/** Filter out tour list items from markdown text (when cards are present) */
+function filterTourListFromText(text: string): string {
+  // Remove lines that look like tour list items (numbered list with price/tour name pattern)
+  // Pattern: "1. Tour Name\n   📍 Location | ... | 💰 Price"
+  const lines = text.split("\n");
+  const filtered = lines.filter((line) => {
+    const trimmed = line.trim();
+    // Skip numbered tour items (e.g., "1. Tour Đà Nẵng...")
+    if (/^\d+\.\s+Tour\s+/i.test(trimmed)) return false;
+    // Skip lines that are just separators
+    if (/^[*_\-]{3,}$/.test(trimmed)) return false;
+    // Skip tour detail continuation lines (start with spaces + emoji)
+    if (/^\s+[📍⏱💰🎉✅✈️🏨]/.test(trimmed)) return false;
+    // Skip lines with just a number and punctuation (e.g., "1." or "2.")
+    if (/^\d+[\.\)]$/.test(trimmed)) return false;
+    // Skip "Tìm thấy X tour" or similar summary lines
+    if (/tìm thấy\s+\d+\s+tour/i.test(trimmed)) return false;
+    // Skip "Đặt ngay" or similar action lines
+    if (/đặt ngay|xem chi tiết|chi tiết/i.test(trimmed)) return false;
+    // Skip lines that are just category names (cultural, beach, nature, etc.)
+    if (/^(cultural|beach|nature|adventure|city|mountain|heritage|island)$/i.test(trimmed)) return false;
+    // Skip lines starting with Tour and ending with category-like words
+    if (/^Tour\s+.+(cultural|beach|nature|adventure|city|mountain|heritage|island)$/i.test(trimmed)) return false;
+    return true;
+  });
+  return filtered.join("\n");
+}
+
 interface ChatMessageItemProps {
   message: ChatMessage;
   onRetry?: () => void;
@@ -47,9 +76,8 @@ export function ChatMessageItem({
   const isUser = message.role === "user";
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [showReactionPicker, setShowReactionPicker] = useState(false);
 
-  const { messageReactions, bookmarkedMessages, toggleBookmark, addReaction, removeReaction, isBookmarked } = useChatStore();
+  const { messageReactions, toggleBookmark, addReaction, removeReaction, isBookmarked } = useChatStore();
 
   const reaction = messageReactions[message.id];
   const isMsgBookmarked = isBookmarked(message.id);
@@ -78,80 +106,53 @@ export function ChatMessageItem({
       addReaction(message.id, type);
       toast.success(type === "helpful" ? "Bạn thấy hữu ích 👍" : "Bạn thấy không hữu ích 👎");
     }
-    setShowReactionPicker(false);
   };
 
   return (
     <div
-      className={cn("flex gap-3 animate-[slide-up_0.3s_ease-out group", isUser && "flex-row-reverse")}
+      className="flex gap-3"
+      style={{ justifyContent: isUser ? "flex-end" : "flex-start" }}
       onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => {
-        setShowActions(false);
-        setShowReactionPicker(false);
-      }}
+      onMouseLeave={() => setShowActions(false)}
     >
-      {/* Avatar */}
-      <div
-        className={cn(
-          "w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg transition-transform",
-          showActions && "scale-110"
-        )}
-        style={
-          isUser
-            ? { backgroundColor: "#FFFFFF", border: `2px solid ${CHAT_SURFACE_LIGHT}` }
-            : { background: `linear-gradient(135deg, ${CHAT_PRIMARY}, ${CHAT_ACCENT})` }
-        }
-      >
-        {isUser ? (
-          <User className="w-5 h-5" style={{ color: CHAT_PRIMARY }} />
-        ) : (
+      {/* Avatar — always visible, stays on its side */}
+      {!isUser && (
+        <div
+          className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-md self-start"
+          style={{ background: `linear-gradient(135deg, ${CHAT_PRIMARY}, ${CHAT_ACCENT})` }}
+        >
           <Bot className="w-5 h-5 text-white" />
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Content */}
-      <div className={cn("flex-1 inline-flex flex-col", isUser ? "items-end" : "items-start")}>
-        {/* Action buttons (appear on hover) */}
+      {/* Bubble + timestamp column */}
+      <div
+        className="flex flex-col"
+        style={{ alignItems: isUser ? "flex-end" : "flex-start", maxWidth: "75%" }}
+      >
+        {/* Action buttons above bubble (AI only) */}
         {showActions && !isUser && (
-          <div
-            className="flex items-center gap-1 mb-2 animate-[fade-in_0.2s_ease-out]"
-            style={{ animationDelay: "0ms" }}
-          >
-            {/* Helpful */}
+          <div className="flex items-center gap-1 mb-1.5">
             <button
               onClick={() => handleReaction("helpful")}
-              className={cn(
-                "w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer",
-              )}
-              style={{
-                backgroundColor: reaction === "helpful" ? "#22C55E" : CHAT_SURFACE_LIGHT,
-              }}
+              className="w-7 h-7 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: reaction === "helpful" ? "#22C55E" : CHAT_SURFACE_LIGHT }}
               title="Hữu ích"
             >
               <ThumbsUp className="w-3.5 h-3.5" style={{ color: reaction === "helpful" ? "#FFFFFF" : CHAT_GRAY }} />
             </button>
-
-            {/* Not helpful */}
             <button
               onClick={() => handleReaction("not_helpful")}
-              className={cn(
-                "w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer",
-              )}
-              style={{
-                backgroundColor: reaction === "not_helpful" ? "#EF4444" : CHAT_SURFACE_LIGHT,
-              }}
+              className="w-7 h-7 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: reaction === "not_helpful" ? "#EF4444" : CHAT_SURFACE_LIGHT }}
               title="Không hữu ích"
             >
               <ThumbsDown className="w-3.5 h-3.5" style={{ color: reaction === "not_helpful" ? "#FFFFFF" : CHAT_GRAY }} />
             </button>
-
-            {/* Bookmark */}
             <button
               onClick={handleBookmark}
-              className="w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer"
-              style={{
-                backgroundColor: isMsgBookmarked ? CHAT_PRIMARY : CHAT_SURFACE_LIGHT,
-              }}
+              className="w-7 h-7 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: isMsgBookmarked ? CHAT_PRIMARY : CHAT_SURFACE_LIGHT }}
               title={isMsgBookmarked ? "Bỏ đánh dấu" : "Đánh dấu"}
             >
               {isMsgBookmarked ? (
@@ -160,11 +161,9 @@ export function ChatMessageItem({
                 <Bookmark className="w-3.5 h-3.5" style={{ color: CHAT_GRAY }} />
               )}
             </button>
-
-            {/* Copy */}
             <button
               onClick={handleCopy}
-              className="w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer"
+              className="w-7 h-7 rounded-full flex items-center justify-center"
               style={{ backgroundColor: CHAT_SURFACE_LIGHT }}
               title="Sao chép"
             >
@@ -174,12 +173,10 @@ export function ChatMessageItem({
                 <Copy className="w-3.5 h-3.5" style={{ color: CHAT_GRAY }} />
               )}
             </button>
-
-            {/* Retry (if failed) */}
             {isFailed && onRetry && (
               <button
                 onClick={onRetry}
-                className="w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer"
+                className="w-7 h-7 rounded-full flex items-center justify-center"
                 style={{ backgroundColor: "rgba(237,29,36,0.1)" }}
                 title="Thử lại"
               >
@@ -189,12 +186,20 @@ export function ChatMessageItem({
           </div>
         )}
 
-        {/* Bubble + Timestamp wrapped for shrink-to-fit */}
-        <div className="inline-flex flex-col">
+        {/* Bubble */}
+        <div className="relative">
+          {isFailed && (
+            <div
+              className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white z-10"
+              style={{ backgroundColor: "#ED1D24" }}
+              title="Tin nhắn gửi thất bại"
+            >
+              !
+            </div>
+          )}
+
           <div
-            className={cn(
-              "px-5 py-3.5 text-[15px] leading-relaxed whitespace-pre-wrap break-normal w-fit max-w-full relative",
-            )}
+            className="px-5 py-3.5 text-[15px] leading-relaxed whitespace-pre-wrap break-words"
             style={
               isUser
                 ? {
@@ -202,28 +207,18 @@ export function ChatMessageItem({
                     borderRadius: "20px 20px 4px 20px",
                     boxShadow: "0 4px 15px rgba(0,70,193,0.3)",
                     color: "#FFFFFF",
-                    maxWidth: "85%",
+                    alignSelf: "flex-end",
                   }
                 : {
                     backgroundColor: "#FFFFFF",
                     borderRadius: "20px 20px 20px 4px",
                     boxShadow: "0 4px 20px rgba(0,70,193,0.1)",
                     color: "#000E1A",
-                    maxWidth: "85%",
+                    alignSelf: "flex-start",
                   }
             }
           >
-            {isFailed && (
-              <div
-                className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
-                style={{ backgroundColor: "#ED1D24" }}
-                title="Tin nhắn gửi thất bại"
-              >
-                !
-              </div>
-            )}
-
-            {/* Tool status indicator */}
+            {/* Tool status */}
             {toolStatus && toolStatus !== "idle" && toolLabel && (
               <div
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full mb-2"
@@ -237,27 +232,18 @@ export function ChatMessageItem({
               </div>
             )}
 
-            {/* Intent badge */}
-            {!isUser && message.metadata && typeof message.metadata.intent === "string" ? (
-              <div
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold mb-2"
-                style={{
-                  backgroundColor: CHAT_SURFACE_LIGHT,
-                  color: CHAT_PRIMARY,
-                  borderRadius: "20px",
-                }}
-              >
-                <Sparkles className="w-3 h-3" />
-                {String(message.metadata.intent).replace(/_/g, " ")}
-              </div>
-            ) : null}
+            {/* Render text content - filter out tour list if cards are present */}
+            {!isUser && hasTourCards(message.content_blocks) ? (
+              <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
+                {filterTourListFromText(message.content)}
+              </p>
+            ) : (
+              renderContent(message.content)
+            )}
 
-            {/* Content */}
-            {renderContent(message.content)}
-
-            {/* Content blocks (rich structured content from AI) */}
+            {/* Rich content blocks - tour cards with responsive layout */}
             {!isUser && message.content_blocks && message.content_blocks.length > 0 && (
-              <div className="mt-3 space-y-2">
+              <div className="mt-3 space-y-2 [&_.tour-carousel-container]:w-full [&_.tour-carousel-container>div]:!flex-wrap">
                 {renderContentBlocks(message.content_blocks)}
               </div>
             )}
@@ -277,7 +263,7 @@ export function ChatMessageItem({
               </div>
             )}
 
-            {/* Reaction indicator */}
+            {/* Reaction */}
             {reaction && !isUser && (
               <div
                 className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 text-[11px] rounded-full"
@@ -295,25 +281,28 @@ export function ChatMessageItem({
               </div>
             )}
           </div>
-
-          {/* Timestamp */}
-          {message.created_at && (
-            <p
-              className={cn("text-[11px] mt-1 px-1", isUser ? "text-right" : "text-left")}
-              style={{ color: CHAT_GRAY }}
-            >
-              {format(new Date(message.created_at), "HH:mm", { locale: vi })}
-            </p>
-          )}
         </div>
+
+        {/* Timestamp */}
+        {message.created_at && (
+          <p
+            className="text-[11px] mt-1 px-1"
+            style={{ color: CHAT_GRAY, alignSelf: isUser ? "flex-end" : "flex-start" }}
+          >
+            {format(new Date(message.created_at), "HH:mm", { locale: vi })}
+          </p>
+        )}
       </div>
 
-      <style jsx>{`
-        @keyframes fade-in {
-          from { opacity: 0; transform: translateY(-4px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
+      {/* User avatar — on the right */}
+      {isUser && (
+        <div
+          className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-md self-start"
+          style={{ backgroundColor: "#FFFFFF", border: `2px solid ${CHAT_SURFACE_LIGHT}` }}
+        >
+          <User className="w-5 h-5" style={{ color: CHAT_PRIMARY }} />
+        </div>
+      )}
     </div>
   );
 }

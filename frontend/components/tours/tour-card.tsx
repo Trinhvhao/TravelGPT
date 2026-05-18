@@ -2,50 +2,8 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatPrice } from "@/lib/utils";
+import { getDestinationImage } from "@/lib/destination-images";
 import { MapPin, Clock, Star } from "lucide-react";
-
-// ── Vietravel Design System — TourCard Component ────────────────────────────
-
-// Fallback images by destination
-const FALLBACK_IMAGES: Record<string, string[]> = {
-  beach: [
-    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800",
-    "https://images.unsplash.com/photo-1519046904884-53103b34b206?w=800",
-  ],
-  island: [
-    "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800",
-    "https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800",
-  ],
-  mountain: [
-    "https://images.unsplash.com/photo-1528181304800-259b08848526?w=800",
-    "https://images.unsplash.com/photo-1597007064818-11d2395dc5df?w=800",
-  ],
-  city: [
-    "https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?w=800",
-    "https://images.unsplash.com/photo-1561626423-a51b45aef0a1?w=800",
-  ],
-  default: [
-    "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800",
-    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800",
-  ],
-};
-
-function getSmartFallback(destination: string): string {
-  const dest = destination.toLowerCase();
-  if (dest.includes("phú quốc") || dest.includes("côn đảo") || dest.includes("con dao")) {
-    return FALLBACK_IMAGES.island[0];
-  }
-  if (dest.includes("nha trang") || dest.includes("phan thiết") || dest.includes("vũng tàu")) {
-    return FALLBACK_IMAGES.beach[0];
-  }
-  if (dest.includes("sapa") || dest.includes("đà lạt")) {
-    return FALLBACK_IMAGES.mountain[0];
-  }
-  if (dest.includes("hội an") || dest.includes("huế") || dest.includes("đà nẵng")) {
-    return FALLBACK_IMAGES.city[0];
-  }
-  return FALLBACK_IMAGES.default[0];
-}
 
 interface TourCardProps {
   tour: {
@@ -68,7 +26,7 @@ export function TourCard({ tour }: TourCardProps) {
   const imageUrl = typeof firstImage === "string"
     ? firstImage
     : firstImage?.url;
-  const displayImage = imageUrl || getSmartFallback(tour.destination);
+  const displayImage = imageUrl || getDestinationImage(tour.destination);
 
   const displayPrice = tour.discount_price || tour.price;
   const hasDiscount =

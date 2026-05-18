@@ -22,13 +22,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           "disabled:cursor-not-allowed disabled:opacity-50",
           "disabled:bg-off-white disabled:text-medium-gray",
           "min-h-[48px]", // 48px touch target
-          error && [
-            "border-2 border-error bg-error-light",
-            "focus:border-error focus:shadow-none",
-          ],
+          "pl-4 pr-4",
           className
         )}
-        style={{ padding: "12px 16px" }}
         ref={ref}
         {...props}
       />

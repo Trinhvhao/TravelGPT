@@ -58,32 +58,9 @@ export interface NotificationItem {
   type: "booking" | "promo" | "system";
 }
 
-const mockNotifications: NotificationItem[] = [
-  {
-    id: "1",
-    title: "Xác nhận đặt tour thành công",
-    message: "Tour Đà Nẵng 4N3Đ đã được xác nhận. Mã booking: #TG-2024-001",
-    time: "5 phút trước",
-    read: false,
-    type: "booking",
-  },
-  {
-    id: "2",
-    title: "Khuyến mãi mùa hè",
-    message: "Giảm đến 30% cho tour Nha Trang tuần này!",
-    time: "2 giờ trước",
-    read: false,
-    type: "promo",
-  },
-  {
-    id: "3",
-    title: "Cập nhật hồ sơ",
-    message: "Hồ sơ của bạn đã được cập nhật thành công.",
-    time: "1 ngày trước",
-    read: true,
-    type: "system",
-  },
-];
+// TODO: replace with real API call: GET /api/v1/notifications
+// Currently loaded from booking events, auth events, and system alerts
+const defaultNotifications: NotificationItem[] = [];
 
 export const useUIStore = create<UIState>()(
   persist(
@@ -124,8 +101,8 @@ export const useUIStore = create<UIState>()(
       setLanguage: (language) => set({ language }),
 
       // Notifications
-      notifications: mockNotifications,
-      unreadCount: mockNotifications.filter((n) => !n.read).length,
+      notifications: defaultNotifications,
+      unreadCount: 0,
       markAsRead: (id) =>
         set((s) => {
           const updated = s.notifications.map((n) =>

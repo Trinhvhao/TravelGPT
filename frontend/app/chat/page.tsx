@@ -11,6 +11,7 @@ import type {
   WebSearchResult,
   ImageAttachment,
 } from "@/types";
+import type { ContentBlock as AIContentBlock } from "@/types";
 import {
   ChatInput,
   SuggestionChips,
@@ -20,7 +21,9 @@ import {
 } from "@/components/chat";
 import { WebSearchResultCard } from "@/components/chat/web-search-result-card";
 import { CancellationCard } from "@/components/chat/cancellation-card";
+import { RescheduleCard } from "@/components/chat/reschedule-card";
 import { useImageAttachments } from "@/components/chat/chat-attachments";
+import { useAuth } from "@/hooks/useAuth";
 import Navbar from "@/components/layout/navbar";
 import { renderContentBlocks } from "@/components/chat/rich-content-blocks";
 import type { ContentBlock } from "@/types/chat";
@@ -129,21 +132,6 @@ function AssistantBubble({
           <div className="whitespace-pre-wrap text-[15px] leading-relaxed" style={{ color: NAVY }}>
             {renderContent(content)}
           </div>
-          {intent && (
-            <Badge
-              variant="outline"
-              className="mt-3 text-[11px] font-semibold"
-              style={{
-                borderColor: SURFACE_LIGHT,
-                backgroundColor: SURFACE_LIGHT,
-                color: PRIMARY,
-                borderRadius: "20px",
-              }}
-            >
-              <Sparkles className="h-3 w-3 mr-1" />
-              {String(intent).replace(/_/g, " ")}
-            </Badge>
-          )}
         </Card>
         {suggestions && suggestions.length > 0 && onSuggestionClick && (
           <div className="flex flex-wrap gap-2 pl-1">
@@ -615,19 +603,29 @@ export default function ChatPage() {
     setWebSearchResults,
     clearWebSearchResults,
     cancellationFlowActive,
+    rescheduleFlowActive,
+    setRescheduleFlow,
   } = useChatStore();
-
+  const { isAuthenticated } = useAuth();
   const initializedRef = useRef(false);
 
   // Initialize session - only once on mount
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
+
+    // Clear persisted messages on reload → always start fresh
+    _setMessages([]);
+
     if (!sessionId) {
       setSessionId(uuidv4());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // NOTE: Chat history is NOT loaded on reload by design.
+  // Each page reload = fresh conversation. History can be accessed
+  // via the conversation history sidebar or explicit user action.
 
   // Auto-scroll
   useEffect(() => {
@@ -677,7 +675,7 @@ export default function ChatPage() {
     };
     addMessage(userMsg);
     setLoading(true);
-    setStreaming(true);
+    setStreaming(false);
 
     const streamingId = `assistant_${Date.now()}`;
     addMessage({
@@ -688,8 +686,12 @@ export default function ChatPage() {
       created_at: new Date().toISOString(),
     });
 
+    // Small delay to let "Đang suy nghĩ..." show first
+    await new Promise(r => setTimeout(r, 300));
+    setStreaming(true);
+
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3008/api/v1";
       const token = typeof window !== "undefined" ? localStorage.getItem("tgpt_access") : null;
 
       const controller = new AbortController();
@@ -757,6 +759,7 @@ export default function ChatPage() {
                   m.id === streamingId
                     ? {
                         ...m,
+                        content_blocks: event.content_blocks || [],
                         metadata: {
                           intent: event.intent,
                           suggestions: event.suggestions,
@@ -767,6 +770,8 @@ export default function ChatPage() {
                           cancellation_flow_active: event.cancellation_flow_active,
                           cancellation_step: event.cancellation_step,
                           cancellation_data: event.cancellation_data,
+                          tours: event.tours,
+                          content_blocks: event.content_blocks,
                         },
                       }
                     : m
@@ -780,6 +785,9 @@ export default function ChatPage() {
               // Activate cancellation flow if backend returns it
               if (event.cancellation_flow_active) {
                 setCancellationFlow(true);
+              }
+              if (event.reschedule_flow_active) {
+                setRescheduleFlow(true);
               }
               if (event.booking_flow_active && event.booking_step) {
                 setBookingFlow(true, event.booking_step, event.booking_data ?? {});
@@ -892,7 +900,7 @@ export default function ChatPage() {
       {/* Messages Area */}
       <div
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto px-4 py-6 space-y-6"
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-3"
         style={{ backgroundColor: SURFACE }}
       >
         {messages.length === 0 && (
@@ -910,7 +918,7 @@ export default function ChatPage() {
           const bData = meta?.booking_data as Partial<BookingFlowData> | undefined;
 
           return (
-            <div key={message.id} data-message-id={message.id}>
+            <div key={message.id} className="w-full">
               {isUser ? (
                 // User message with actions
                 <ChatMessageItem
@@ -928,8 +936,8 @@ export default function ChatPage() {
                     toolLabel={isLast && isStreaming ? toolLabel : undefined}
                   />
 
-                  {/* Tour results */}
-                  {tours.length > 0 && (
+                  {/* Tour results - only show if NO content_blocks with tours */}
+                  {tours.length > 0 && !message.content_blocks?.some((b: ContentBlock) => b.type === "tour_carousel" || b.type === "tour_card") && (
                     <TourResultInline tours={tours} onBook={handleBookFromTour} />
                   )}
 
@@ -956,6 +964,19 @@ export default function ChatPage() {
                       onReschedule={() => {
                         resetFlows();
                         handleSubmit("Tôi muốn đổi lịch thay vì hủy");
+                      }}
+                    />
+                  )}
+
+                  {/* Reschedule flow */}
+                  {rescheduleFlowActive && (
+                    <RescheduleCard
+                      step={meta?.reschedule_step as never}
+                      data={meta?.reschedule_data as never}
+                      onConfirm={() => handleSubmit("Xác nhận đổi lịch")}
+                      onCancel={() => {
+                        resetFlows();
+                        handleSubmit("Không đổi lịch nữa");
                       }}
                     />
                   )}

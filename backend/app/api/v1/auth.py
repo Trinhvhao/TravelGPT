@@ -139,6 +139,39 @@ async def update_me(
     return UserResponse(**convert_user_response(updated_user))
 
 
+@router.post("/demo-login", response_model=TokenResponse)
+async def demo_login(db: Prisma = Depends(get_db)):
+    """One-click demo login — auto-creates demo user if not exists."""
+    auth_service = AuthService(db)
+    demo_email = "tram.nguyen@email.com"
+    demo_password = "user123"
+
+    try:
+        user, access_token, refresh_token = await auth_service.login(demo_email, demo_password)
+    except ValueError:
+        # User doesn't exist yet — register them first
+        from app.schemas.user import UserCreate
+        user_data = UserCreate(
+            email=demo_email,
+            password=demo_password,
+            full_name="Trần Thị Trâm",
+            phone="0832345678",
+        )
+        try:
+            user = await auth_service.register(user_data)
+        except ValueError:
+            # Race condition — user was just created, try login again
+            user, access_token, refresh_token = await auth_service.login(demo_email, demo_password)
+        else:
+            _, access_token, refresh_token = await auth_service.login(demo_email, demo_password)
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserResponse(**convert_user_response(user))
+    )
+
+
 @router.post("/change-password")
 async def change_password(
     old_password: str,

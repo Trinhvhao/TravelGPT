@@ -20,6 +20,7 @@ import logging
 
 from app.core.prisma import get_db
 from app.api.deps import get_current_user, get_optional_user
+from app.core.llm_client import ToolCallsResult
 from app.schemas.chat import (
     ChatRequest, ChatResponse, ChatMessageResponse, ChatHistoryResponse,
     ChatConversationResponse, MessageRole,
@@ -175,10 +176,10 @@ async def send_message(
                 "intent": result.get("intent"),
                 "suggestions": result.get("suggestions", [])
             },
-            created_at=saved_message.created_at if saved_message else None
+            created_at=saved_message.created_at if saved_message else datetime.utcnow()
         ) if saved_message else ChatMessageResponse(
             id="", conversation_id=session_id, role=MessageRole.ASSISTANT,
-            content=result["response"], metadata={}, created_at=None
+            content=result["response"], metadata={}, created_at=datetime.utcnow()
         ),
         conversation_id=conversation.id if conversation else session_id,
         suggestions=result.get("suggestions", []),
@@ -428,40 +429,89 @@ async def get_loyalty_points(
 @router.post("/post-trip/summary", response_model=PostTripResponse)
 async def get_post_trip_summary(
     request: PostTripRequest,
+    current_user=Depends(get_optional_user),
     db: Prisma = Depends(get_db)
 ):
     """
-    Lấy tổng hợp thông tin sau chuyến đi
+    Lấy tổng hợp thông tin sau chuyến đi.
+    Nếu không cung cấp booking_code, tự động lấy booking gần nhất của user.
     """
-    if not request.booking_code:
-        raise HTTPException(status_code=400, detail="Booking code is required")
-    
-    # Get feedback
-    survey = PostTripSupport.generate_feedback_survey(
-        request.booking_code,
-        request.tour_name or "Tour của bạn"
-    )
-    
-    # Get loyalty
+    # Resolve booking from DB
+    booking = None
+    if request.booking_code:
+        booking = await db.booking.find_unique(
+            where={"bookingCode": request.booking_code},
+            include={"tour": True}
+        )
+    elif current_user:
+        # Auto-lookup: get most recent COMPLETED/CONFIRMED booking for user
+        recent = await db.booking.find_many(
+            where={
+                "userId": current_user.id,
+                "status": {"in": ["COMPLETED", "CONFIRMED"]}
+            },
+            include={"tour": True},
+            order={"createdAt": "desc"},
+            take=1
+        )
+        if recent:
+            booking = recent[0]
+
+    # Extract real data from booking
+    tour_name = request.tour_name or (booking.tour.name if booking and booking.tour else None)
+    destination = request.destination or (booking.tour.destination if booking and booking.tour else None)
+    departure_date = request.departure_date or booking.departureDate if booking else None
+    return_date = request.return_date
+    num_adults = request.num_adults or (booking.numAdults if booking else 1)
+    num_children = request.num_children or (booking.numChildren if booking else 0)
+    total_spent = request.total_spent or (float(booking.totalPrice) if booking and booking.totalPrice else 0)
+
+    # Compute return date from tour duration if not provided
+    if not return_date and booking and booking.tour and departure_date:
+        try:
+            from datetime import timedelta
+            import re
+            dur_str = booking.tour.duration or "3 ngày 2 đêm"
+            m = re.search(r"(\d+)\s*ngày", dur_str)
+            if m:
+                days = int(m.group(1))
+                dep = datetime.strptime(departure_date.strftime("%Y-%m-%d"), "%Y-%m-%d")
+                return_date = dep + timedelta(days=days)
+        except Exception:
+            pass
+
+    # Determine is_first_booking
+    is_first = request.is_first_booking
+    if is_first is None and current_user:
+        count = await db.booking.count(where={"userId": current_user.id})
+        is_first = count <= 1
+
+    # Build loyalty
     loyalty = PostTripSupport.calculate_loyalty_points(
-        num_adults=request.num_adults or 1,
-        num_children=request.num_children or 0,
-        total_spent=request.total_spent or 0,
-        is_first_booking=request.is_first_booking or False
+        num_adults=num_adults,
+        num_children=num_children,
+        total_spent=total_spent,
+        is_first_booking=is_first or False
     )
-    
-    # Get return reminder
-    return_date = request.return_date or datetime.now()
+
+    booking_code = request.booking_code or (booking.bookingCode if booking else None)
+
+    # Generate feedback + reminders
+    survey = PostTripSupport.generate_feedback_survey(
+        booking_code or "UNKNOWN",
+        tour_name or "Tour của bạn"
+    )
     return_reminder = PostTripSupport.get_return_reminders(
-        request.tour_name or "Tour của bạn",
-        return_date
+        tour_name or "Tour của bạn",
+        return_date or datetime.now()
     )
-    
+
     return PostTripResponse(
         feedback_survey=survey,
         loyalty_points=loyalty["earned_points"],
         loyalty_tier=loyalty["tier"],
         loyalty_benefits=loyalty["benefits"],
+        points_to_next_tier=loyalty["points_to_next_tier"],
         return_reminder=return_reminder
     )
 
@@ -952,10 +1002,10 @@ async def send_message_v2(
                 "suggestions": result.get("suggestions", []),
                 "memory_context": result.get("memory_context", "")
             },
-            created_at=saved_message.created_at if saved_message else None
+            created_at=saved_message.created_at if saved_message else datetime.utcnow()
         ) if saved_message else ChatMessageResponse(
             id="", conversation_id=session_id, role=MessageRole.ASSISTANT,
-            content=result["response"], metadata={}, created_at=None
+            content=result["response"], metadata={}, created_at=datetime.utcnow()
         ),
         conversation_id=conversation.id if conversation else session_id,
         suggestions=result.get("suggestions", []),
@@ -970,6 +1020,64 @@ async def send_message_v2(
         reschedule_flow_active=result.get("reschedule_flow_active"),
         reschedule_step=result.get("reschedule_step")
     )
+
+
+# ============= Helper Functions =============
+
+async def _get_related_tours(executor, destination: str, limit: int = 5) -> List:
+    """
+    Get related tours when exact search fails.
+    Uses fuzzy search and region-based search.
+    """
+    from app.core.llm_client import ToolCall
+
+    # Common destination region mappings
+    region_mappings = {
+        "hà nội": "NORTH", "ha noi": "NORTH", "hanoi": "NORTH", "sapa": "NORTH", "sa pa": "NORTH",
+        "hạ long": "NORTH", "ha long": "NORTH",
+        "huế": "CENTRAL", "hue": "CENTRAL", "đà nẵng": "CENTRAL", "da nang": "CENTRAL",
+        "hội an": "CENTRAL", "hoi an": "CENTRAL",
+        "nha trang": "CENTRAL", "nhatrang": "CENTRAL",
+        "tp hcm": "SOUTH", "hồ chí minh": "SOUTH", "saigon": "SOUTH",
+        "phú quốc": "SOUTH", "phu quoc": "SOUTH",
+        "cần thơ": "SOUTH", "can tho": "SOUTH",
+    }
+
+    dest_lower = destination.lower().strip()
+    region = region_mappings.get(dest_lower)
+
+    # First try fuzzy search
+    fuzzy_args = {"query": destination, "limit": limit}
+    fuzzy_tool_calls = [ToolCall(id="fallback_fuzzy", name="search_tours", arguments=fuzzy_args)]
+    fuzzy_results = await executor.execute_tools(fuzzy_tool_calls, user_id="system")
+
+    if fuzzy_results:
+        for tr in fuzzy_results:
+            if tr.get("result", {}).get("tours"):
+                return tr["result"]["tours"]
+
+    # If fuzzy fails, try by region
+    if region:
+        region_args = {"region": region, "limit": limit}
+        region_tool_calls = [ToolCall(id="fallback_region", name="search_tours", arguments=region_args)]
+        region_results = await executor.execute_tools(region_tool_calls, user_id="system")
+
+        if region_results:
+            for tr in region_results:
+                if tr.get("result", {}).get("tours"):
+                    return tr["result"]["tours"][:limit]
+
+    # Last resort: get any featured tours
+    featured_args = {"is_featured": True, "limit": limit}
+    featured_tool_calls = [ToolCall(id="fallback_featured", name="search_tours", arguments=featured_args)]
+    featured_results = await executor.execute_tools(featured_tool_calls, user_id="system")
+
+    if featured_results:
+        for tr in featured_results:
+            if tr.get("result", {}).get("tours"):
+                return tr["result"]["tours"][:limit]
+
+    return []
 
 
 # ============= Streaming Chat Endpoint =============
@@ -996,6 +1104,11 @@ async def send_message_stream(
     intent_detector = ctx.intent_detector
     recommendation_engine = ctx.recommendation_engine
 
+    async def _stream_text(text: str, chunk_size: int = 20):
+        """Simulate streaming by yielding text in small chunks."""
+        for i in range(0, len(text), chunk_size):
+            yield text[i : i + chunk_size]
+
     async def generate_stream():
         try:
             # Send start signal
@@ -1012,7 +1125,7 @@ async def send_message_stream(
 
             logger.info(f"Streaming chat: session={session_id}, user={user_id}, msg_len={len(request.message)}, history_msgs={len(memory.get_messages())}")
 
-            # Stream from LLM directly — bypass agent business logic
+            # Import required modules
             from app.core.llm_client import get_llm_client, LLMCircuitOpenError, LLMTimeoutError, ToolCallsResult
             from app.ai.tools import TOOL_DEFINITIONS
             from app.ai.tools_executor import ToolExecutor
@@ -1036,46 +1149,181 @@ async def send_message_stream(
             # Enrich system prompt with tools
             system_with_tools = SYSTEM_PROMPT + context_msg + tool_descriptions
 
-            # Get conversation history
-            conversation_history = memory.get_messages()
+            # INTENT-DRIVEN TOOL EXECUTION (bypass LLM tool calling)
+            # The LLM doesn't reliably call tools, so we use intent detection instead
+            tour_results_for_complete: List = []
+            content_blocks_for_complete: List = []
+            tool_related_intents = {
+                "search_tour", "list_tours", "list_all_tours", "booking", "cancel", 
+                "reschedule", "get_booking", "get_tour_detail", "compare_tour", 
+                "price_inquiry", "availability", "weather_inquiry", "post_trip",
+                "general_question"  # Also check for tour-related queries
+            }
+            
+            # Check if this general question might be about tours
+            is_tour_query = any(keyword in request.message.lower() for keyword in [
+                "tour", "đi", "du lịch", "khám phá", "biển", "núi", "thành phố"
+            ])
+            
+            if intent in tool_related_intents or extracted_params.get("destination") or extracted_params.get("query") or extracted_params.get("category") or (intent == "general_question" and is_tour_query):
+                # Map intent to tool name
+                tool_name_map = {
+                    "search_tour": "search_tours",
+                    "list_tours": "search_tours",
+                    "list_all_tours": "search_tours",
+                    "get_tour_detail": "get_tour_details",
+                    "booking": "create_booking",
+                    "cancel": "cancel_booking",
+                    "reschedule": "reschedule_booking",
+                    "get_booking": "get_user_bookings",
+                    "weather_inquiry": "get_weather",
+                    "post_trip": "get_post_trip_summary",
+                }
+                
+                tool_name = tool_name_map.get(intent, "search_tours")
+                
+                # Build tool arguments from extracted params
+                tool_args = {}
+                if extracted_params.get("destination"):
+                    tool_args["destination"] = extracted_params["destination"]
+                if extracted_params.get("query"):
+                    tool_args["query"] = extracted_params["query"]
+                if extracted_params.get("region"):
+                    # Map Vietnamese region names to DB enum values
+                    region_map = {
+                        "miền bắc": "NORTH",
+                        "bac": "NORTH",
+                        "mien bac": "NORTH",
+                        "miền trung": "CENTRAL",
+                        "trung": "CENTRAL",
+                        "mien trung": "CENTRAL",
+                        "miền nam": "SOUTH",
+                        "nam": "SOUTH",
+                        "mien nam": "SOUTH",
+                        "quốc tế": "INTERNATIONAL",
+                        "international": "INTERNATIONAL",
+                    }
+                    reg = extracted_params["region"].lower()
+                    tool_args["region"] = region_map.get(reg, reg)
+                if extracted_params.get("budget"):
+                    tool_args["max_price"] = extracted_params["budget"]
+                if extracted_params.get("duration"):
+                    tool_args["duration"] = extracted_params["duration"]
+                if extracted_params.get("category"):
+                    # Map Vietnamese category names to English DB values
+                    category_map = {
+                        "biển": "beach",
+                        "bãi biển": "beach",
+                        "núi": "mountain",
+                        "thành phố": "city",
+                        "city": "city",
+                        "đảo": "island",
+                        "di sản": "heritage",
+                        "mạo hiểm": "adventure",
+                        "thiên nhiên": "nature",
+                    }
+                    cat = extracted_params["category"].lower()
+                    tool_args["category"] = category_map.get(cat, cat)
 
-            # First LLM call with tools — LLM decides what to do
-            all_messages = [
-                {"role": "system", "content": system_with_tools},
-                *conversation_history
-            ]
+                # For post_trip intent: extract booking_code from conversation history or params
+                if intent == "post_trip" and extracted_params.get("booking_code"):
+                    tool_args["booking_code"] = extracted_params["booking_code"]
 
-            logger.info(f"Streaming chat (tool-calling): session={session_id}, user={user_id}, msg_len={len(request.message)}, history_msgs={len(conversation_history)}")
-
-            # First LLM call — decide if tools are needed
-            llm_response = await llm_client.chat_completion(
-                all_messages,
-                tools=TOOL_DEFINITIONS,
-                tool_choice="auto",
-                max_tokens=2048
-            )
-
-            # Handle tool calls
-            tour_results_for_complete = []
-
-            if isinstance(llm_response, ToolCallsResult) and llm_response.tool_calls:
-                # Log which tools the LLM chose
-                tool_names = [tc.name for tc in llm_response.tool_calls]
-                logger.info(f"LLM chose tools: {tool_names}")
-
-                # Execute tools
-                tool_results = await executor.execute_tools(
-                    llm_response.tool_calls,
-                    user_id=user_id
-                )
-
-                # Extract tours for the SSE complete event
+                # Set limit based on intent
+                if intent == "list_all_tours":
+                    tool_args["limit"] = 20  # Return more tours when listing all
+                else:
+                    tool_args["limit"] = 5
+                
+                # Create a mock tool call result
+                from app.core.llm_client import ToolCall
+                mock_tool_calls = [ToolCall(
+                    id=f"call_{intent}",
+                    name=tool_name,
+                    arguments=tool_args
+                )]
+                
+                # Execute tools directly
+                logger.info(f"Intent-driven tool execution: intent={intent}, tool={tool_name}, args={tool_args}")
+                tool_results = await executor.execute_tools(mock_tool_calls, user_id=user_id)
+                
+                # Extract tours for the complete event
                 tour_results_for_complete = executor.extract_tours_from_results(tool_results)
+                
+                # Build content_blocks from tool results for frontend rendering
+                for tr in tool_results:
+                    tool_name_key = tr["tool"]
+                    tool_result = tr["result"]
+                    
+                    # show_tour_cards → tour_carousel block
+                    if tool_name_key == "show_tour_cards" and tool_result.get("cards"):
+                        content_blocks_for_complete.append({
+                            "type": "tour_carousel",
+                            "data": {
+                                "title": tool_result.get("message", "Tour phù hợp cho bạn"),
+                                "tours": tool_result["cards"],
+                            }
+                        })
+                    
+                    # search_tours → tour_carousel block (when show_tour_cards not called)
+                    elif tool_name_key == "search_tours" and tool_result.get("tours") and not any(
+                        tr2["tool"] == "show_tour_cards" for tr2 in tool_results
+                    ):
+                        content_blocks_for_complete.append({
+                            "type": "tour_carousel",
+                            "data": {
+                                "title": tool_result.get("message", "Tour tìm được"),
+                                "tours": tool_result["tours"],
+                            }
+                        })
+                    
+                    # get_weather → weather block
+                    elif tool_name_key == "get_weather" and tool_result.get("weather"):
+                        content_blocks_for_complete.append({
+                            "type": "weather",
+                            "data": tool_result["weather"]
+                        })
+                    
+                    # get_tour_details → tour_card block
+                    elif tool_name_key == "get_tour_details" and not tool_result.get("error"):
+                        content_blocks_for_complete.append({
+                            "type": "tour_card",
+                            "data": tool_result
+                        })
 
-                # Build tool result messages for the LLM
+                    # get_post_trip_summary → post_trip block
+                    elif tool_name_key == "get_post_trip_summary" and tool_result.get("status") == "display_post_trip":
+                        content_blocks_for_complete.append({
+                            "type": "post_trip",
+                            "data": {
+                                "booking_code": tool_result.get("booking_code"),
+                                "tour_name": tool_result.get("tour_name"),
+                                "destination": tool_result.get("destination"),
+                                "departure_date": tool_result.get("departure_date"),
+                                "return_date": tool_result.get("return_date"),
+                                "num_adults": tool_result.get("num_adults"),
+                                "num_children": tool_result.get("num_children"),
+                                "total_spent": tool_result.get("total_spent"),
+                                "is_first_booking": tool_result.get("is_first_booking"),
+                                "loyalty_points": tool_result.get("loyalty_points"),
+                                "loyalty_tier": tool_result.get("loyalty_tier"),
+                                "loyalty_benefits": tool_result.get("loyalty_benefits"),
+                                "points_to_next_tier": tool_result.get("points_to_next_tier"),
+                                "feedback_survey": None,
+                                "review_prompt": None,
+                                "return_reminder": tool_result.get("return_reminder"),
+                            }
+                        })
+                
+                # Build messages for LLM synthesis
+                all_messages = [
+                    {"role": "system", "content": system_with_tools}
+                ]
+                all_messages.extend(memory.get_messages())
+                all_messages.append({"role": "user", "content": request.message})
                 all_messages.append({
                     "role": "assistant",
-                    "content": llm_response.content or "",
+                    "content": "",
                     "tool_calls": [
                         {
                             "id": tr["tool_call_id"],
@@ -1085,38 +1333,140 @@ async def send_message_stream(
                         for tr in tool_results
                     ]
                 })
-
                 for tr in tool_results:
                     all_messages.append({
                         "role": "tool",
                         "tool_call_id": tr["tool_call_id"],
                         "content": json.dumps(tr["result"])
                     })
-
-                # Second LLM call — synthesize final response with tool results
-                logger.info(f"Synthesizing response with {len(tool_results)} tool results")
-                final_response = await llm_client.chat_completion(
-                    all_messages,
-                    tools=TOOL_DEFINITIONS,
-                    max_tokens=2048
+                
+                # LLM synthesizes response with tool results
+                logger.info(f"Synthesizing response with {len(tool_results)} tool results for intent={intent}")
+                
+                try:
+                    final_llm_response = await llm_client.chat_completion(
+                        all_messages,
+                        max_tokens=2048
+                    )
+                except Exception as e:
+                    # Fall back to generating response from tool results directly
+                    logger.warning(f"LLM synthesis failed, using fallback: {e}")
+                    tour_data = tool_results[0]["result"] if tool_results else {}
+                    tours = tour_data.get("tours", [])
+                    if tours:
+                        # Generate warm, conversational response
+                        intro_lines = [
+                            f"Ôi, hay quá! Mình tìm được **{len(tours)} tour** phù hợp với bạn rồi đó! 🌟",
+                            ""
+                        ]
+                        
+                        # Group by destination for better organization
+                        tour_lines = []
+                        for i, t in enumerate(tours[:8], 1):
+                            name = t.get('name', 'Tour')
+                            dest = t.get('destination', '')
+                            short_desc = t.get('short_description', '')
+                            price_display = t.get('price_display', 'Liên hệ')
+                            duration = t.get('duration', '')
+                            
+                            # Check for discounted price
+                            original_price = t.get('original_price') or t.get('price')
+                            discount_badge = ""
+                            if original_price and original_price != t.get('price'):
+                                discount_badge = " 🔥"
+                            
+                            tour_lines.append(f"**{i}. {name}**{discount_badge}")
+                            if dest:
+                                tour_lines.append(f"   📍 {dest}" + (f" | ⏱️ {duration}" if duration else ""))
+                            if short_desc:
+                                tour_lines.append(f"   {short_desc}")
+                            tour_lines.append(f"   💰 **{price_display}**")
+                            tour_lines.append("")
+                        
+                        closing_lines = []
+                        if len(tours) > 8:
+                            closing_lines.append(f"... còn **{len(tours) - 8} tour** khác nữa nhé!")
+                            closing_lines.append("")
+                        closing_lines.append("Bạn thích tour nào? Mình có thể gợi ý thêm hoặc hỗ trợ đặt tour ngay!")
+                        
+                        final_text = "\n".join(intro_lines + tour_lines + closing_lines).strip()
+                    else:
+                        final_text = "Hmm, mình chưa tìm được tour nào phù hợp lắm. Bạn thử điều chỉnh ngân sách hoặc địa điểm xem sao? 😊"
+                    final_llm_response = None
+                
+                if final_llm_response is not None and isinstance(final_llm_response, ToolCallsResult):
+                    final_text = final_llm_response.content or ""
+                elif final_llm_response is not None:
+                    final_text = str(final_llm_response)
+                
+                # Check if we have no tours - trigger expert fallback
+                has_tours = tour_results_for_complete or any(
+                    tr.get("result", {}).get("tours") or tr.get("result", {}).get("cards")
+                    for tr in tool_results
                 )
-
-                # Stream the synthesized response as SSE chunks
-                full_text = ""
-                async for chunk in llm_client.chat_completion_stream(
-                    [{"role": "user", "content": f"Kết quả tool: {json.dumps([{'tool': tr['tool'], 'result': tr['result']} for tr in tool_results])}. Viết câu trả lời cho user dựa trên kết quả này:"}]
-                ):
-                    full_text += chunk
-                    yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
-
+                
+                # If no tours found, try to get related tours and trigger expert response
+                if not has_tours and extracted_params.get("destination"):
+                    # Try to get related tours from the same region/destination area
+                    related_tours = await _get_related_tours(executor, extracted_params.get("destination"))
+                    if related_tours:
+                        # Add related tours to content_blocks
+                        content_blocks_for_complete.append({
+                            "type": "tour_carousel",
+                            "data": {
+                                "title": f"Tour tại {extracted_params.get('destination')} có thể bạn sẽ thích",
+                                "tours": related_tours,
+                            }
+                        })
+                        tour_results_for_complete = related_tours
+                        # Add suggestion block with expert advice
+                        content_blocks_for_complete.append({
+                            "type": "suggestion",
+                            "data": {
+                                "title": "💡 Gợi ý từ chuyên gia",
+                                "content": f"Mình gợi ý bạn một số tour tương tự tại {extracted_params.get('destination')}. Bạn có thể điều chỉnh ngân sách hoặc thời gian để mình tìm tour phù hợp hơn nhé!"
+                            }
+                        })
+                        has_tours = True
+                
+                # Stream the synthesized response
+                full_text = final_text
+                async for chunk_text in _stream_text(final_text):
+                    yield f"data: {json.dumps({'type': 'content', 'content': chunk_text})}\n\n"
+            
             else:
-                # No tool calls — stream the response directly from LLM
+                # No tool needed — stream directly from LLM
+                all_messages = [
+                    {"role": "system", "content": system_with_tools}
+                ]
+                all_messages.extend(memory.get_messages())
+                
                 full_text = ""
-                async for chunk in llm_client.chat_completion_stream(
-                    [{"role": "system", "content": SYSTEM_PROMPT + context_msg}, {"role": "user", "content": request.message}]
-                ):
-                    full_text += chunk
-                    yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
+                try:
+                    llm_response_obj = await llm_client.chat_completion(
+                        all_messages,
+                        max_tokens=2048
+                    )
+                    
+                    if isinstance(llm_response_obj, ToolCallsResult):
+                        first_text = llm_response_obj.content or ""
+                    else:
+                        first_text = str(llm_response_obj)
+                    async for chunk_text in _stream_text(first_text):
+                        full_text += chunk_text
+                        yield f"data: {json.dumps({'type': 'content', 'content': chunk_text})}\n\n"
+                except Exception as e:
+                    logger.warning(f"LLM direct response failed: {e}")
+                    # Generate fallback response based on intent
+                    fallback_responses = {
+                        "greeting": "Xin chào! Mình là TravelGPT, trợ lý du lịch AI của bạn. Mình có thể giúp bạn tìm tour, đặt tour, và lên kế hoạch chuyến đi. Bạn muốn đi đâu?",
+                        "identity_question": "Mình là TravelGPT - trợ lý du lịch AI. Mình có thể giúp bạn tìm và đặt tour du lịch, cung cấp thông tin về điểm đến, và hỗ trợ các vấn đề liên quan đến booking.",
+                        "goodbye": "Tạm biệt bạn! Hẹn gặp lại trong những chuyến đi tiếp theo nhé! 👋",
+                    }
+                    fallback_text = fallback_responses.get(intent, "Xin lỗi, mình đang gặp chút trục trặc. Bạn thử lại sau nhé!")
+                    full_text = fallback_text
+                    async for chunk_text in _stream_text(fallback_text):
+                        yield f"data: {json.dumps({'type': 'content', 'content': chunk_text})}\n\n"
 
             # Save conversation to memory
             memory.add_message("user", request.message, intent=intent, entities=extracted_params)
@@ -1125,6 +1475,14 @@ async def send_message_stream(
             # Get suggestions
             suggestions = recommendation_engine.get_conversation_suggestions(user_id, intent, extracted_params)
 
+            # Extract booking info from tool results for booking_complete event
+            booking_code_from_tool = None
+            for tr in tool_results:
+                result = tr.get("result", {})
+                if result.get("booking_code"):
+                    booking_code_from_tool = result["booking_code"]
+                    break
+
             # Send complete with metadata
             complete_payload = {
                 "type": "complete",
@@ -1132,12 +1490,47 @@ async def send_message_stream(
                 "suggestions": suggestions or [],
                 "response": full_text,
                 "tours": tour_results_for_complete,
+                "content_blocks": content_blocks_for_complete,
+                "booking_code": booking_code_from_tool,
+                "booking_flow_complete": True if (intent == "booking" and booking_code_from_tool) else None,
+                "booking_flow_active": None,
             }
             yield f"data: {json.dumps(complete_payload)}\n\n"
 
+            # Save conversation to database if user is authenticated
+            if current_user:
+                try:
+                    conversation = await db.chatconversation.upsert(
+                        where={
+                            "session_id_user_id": {
+                                "session_id": session_id,
+                                "user_id": user_id
+                            }
+                        },
+                        data={
+                            "create": {"user_id": user_id, "session_id": session_id},
+                            "update": {}
+                        }
+                    )
+                    
+                    await db.chatmessage.create(data={
+                        "conversation_id": conversation.id,
+                        "role": MessageRole.USER.value,
+                        "content": request.message,
+                        "metadata": {"intent": intent},
+                    })
+                    
+                    await db.chatmessage.create(data={
+                        "conversation_id": conversation.id,
+                        "role": MessageRole.ASSISTANT.value,
+                        "content": full_text,
+                        "metadata": {"intent": intent, "suggestions": suggestions},
+                    })
+                except Exception as db_error:
+                    logger.warning(f"Failed to save stream message to DB: {db_error}")
+
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"Stream error: {e}", exc_info=True)
+            logger.error(f"Stream error: {e}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'error': 'Đã xảy ra lỗi'})}\n\n"
 
     return StreamingResponse(

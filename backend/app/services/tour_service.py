@@ -21,7 +21,7 @@ class TourService:
         page: int = 1,
         page_size: int = 12,
     ) -> tuple[list[Tour], int]:
-        where: dict = {}
+        where: dict = {"isActive": True}
 
         if filters.destination:
             where["destination"] = {"contains": filters.destination}
@@ -45,6 +45,7 @@ class TourService:
                 {"name": {"contains": filters.search}},
                 {"description": {"contains": filters.search}},
                 {"destination": {"contains": filters.search}},
+                {"category": {"contains": filters.search}},
             ]
 
         skip = (page - 1) * page_size
@@ -57,7 +58,7 @@ class TourService:
         )
 
         # Get total count
-        total = len(tours)
+        total = await self.db.tour.count(where=where)
 
         return tours, total
 
@@ -80,6 +81,70 @@ class TourService:
                 ],
             },
             take=limit,
+        )
+
+    async def fuzzy_search_tours(self, query: str, limit: int = 10) -> list[Tour]:
+        """
+        Fuzzy search with multiple strategies:
+        1. Exact contains (highest relevance)
+        2. Starts-with match (high relevance)
+        3. Substring match in name/destination
+        4. Similar destination names (for common typos/variations)
+        """
+        query_lower = query.lower().strip()
+        
+        # Common Vietnamese name variations for fuzzy matching
+        destination_mappings = {
+            "ha noi": ["hà nội", "hanoi", "hn"],
+            "hà nội": ["ha noi", "hanoi", "hn"],
+            "hoi an": ["hội an", "hoi an", "ha"],
+            "hội an": ["hoi an", "hoian"],
+            "da nang": ["đà nẵng", "đà nang", "danang", "dn"],
+            "đà nẵng": ["da nang", "danang"],
+            "nha trang": ["nhatrang", "nt"],
+            "nhatrang": ["nha trang"],
+            "phu quoc": ["phú quốc", "phuquoc", "pq"],
+            "phú quốc": ["phu quoc", "phuquoc"],
+            "sa pa": ["sapa", "sapa", "sp"],
+            "sapa": ["sa pa", "sapa"],
+            "ha long": ["hạ long", "halong", "hl"],
+            "hạ long": ["ha long", "halong"],
+            "hue": ["huế", "hue"],
+            "huế": ["hue", "hue"],
+        }
+        
+        # Build OR conditions for fuzzy matching
+        or_conditions = [
+            # Exact contains (case insensitive)
+            {"name": {"contains": query}},
+            {"destination": {"contains": query}},
+            # Starts with (high priority)
+            {"name": {"startsWith": query}},
+            {"destination": {"startsWith": query}},
+            # Substring in description
+            {"description": {"contains": query}},
+            # Category match
+            {"category": {"contains": query}},
+        ]
+        
+        # Add destination variations for common destinations
+        for key, variations in destination_mappings.items():
+            if query_lower in variations or key in query_lower:
+                for var in variations:
+                    if var != query_lower:  # Avoid duplicate
+                        or_conditions.append({"destination": {"contains": var}})
+        
+        return await self.db.tour.find_many(
+            where={
+                "isActive": True,
+                "OR": or_conditions,
+            },
+            take=limit,
+            order=[
+                # Prioritize featured and high-rated tours
+                {"isFeatured": "desc"},
+                {"rating": "desc"},
+            ],
         )
 
     async def search_tours_semantic(

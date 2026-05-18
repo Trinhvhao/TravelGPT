@@ -150,18 +150,13 @@ function generateConversationTitle(messages: ChatMessage[]): { title: string; pr
   return { title, preview, tags };
 }
 
-// Clear persisted storage on load so stale messages never leak through after refresh
-if (typeof window !== "undefined") {
-  try { localStorage.removeItem("travelgpt-chat-store"); } catch { /* ignore */ }
-}
-
 // ─── Store ──────────────────────────────────────────────────────────────────────
 export const useChatStore = create<ChatStoreState>()(
   persist(
     (set, get) => ({
       // Initial state
       messages: [],
-      sessionId: uuidv4(),
+      sessionId: "", // Empty → triggers fresh session on reload via useEffect
       conversationId: null,
       conversations: [],
 

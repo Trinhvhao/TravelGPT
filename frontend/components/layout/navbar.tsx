@@ -25,6 +25,8 @@ import {
   AlertCircle,
   Zap,
   Info,
+  CheckCircle2,
+  Star,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +34,7 @@ const navigation = [
   { name: "Trang chủ", href: "/", icon: Globe },
   { name: "Tours", href: "/tours", icon: Map },
   { name: "AI Chat", href: "/chat", icon: Bot },
+  { name: "Chuẩn bị", href: "/pre-trip", icon: CheckCircle2 },
 ];
 
 const notifIcons = {
@@ -58,6 +61,12 @@ export default function Navbar() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Verify auth token directly (avoids stale Zustand state on first load)
+  const [hasToken, setHasToken] = useState(false);
+  useEffect(() => {
+    setHasToken(!!localStorage.getItem("tgpt_access"));
+  }, []);
 
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -186,88 +195,91 @@ export default function Navbar() {
               </button>
             </Link>
 
-            {/* Notifications */}
-            <div className="relative" ref={notifRef}>
-              <button
-                onClick={() => setNotifOpen((v) => !v)}
-                className="relative inline-flex items-center justify-center w-10 h-10 rounded-xl text-[#636363] hover:text-[#0046C1] hover:bg-[#F7F7F7] transition-all duration-200 cursor-pointer dark:text-[#a1a1aa] dark:hover:text-[#60a5fa] dark:hover:bg-[#1a1a1a]"
-                aria-label="Thông báo"
-              >
-                <Bell className="w-5 h-5" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-[#ED1D24] text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                  </span>
-                )}
-              </button>
+            {/* Notifications — only show for authenticated users */}
+            {isAuthenticated && (
+              <div className="relative" ref={notifRef}>
+                <button
+                  onClick={() => setNotifOpen((v) => !v)}
+                  className="relative inline-flex items-center justify-center w-10 h-10 rounded-xl text-[#636363] hover:text-[#0046C1] hover:bg-[#F7F7F7] transition-all duration-200 cursor-pointer dark:text-[#a1a1aa] dark:hover:text-[#60a5fa] dark:hover:bg-[#1a1a1a]"
+                  aria-label="Thông báo"
+                >
+                  <Bell className="w-5 h-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-[#ED1D24] text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse leading-none pr-px"
+                      style={{ minWidth: "20px", minHeight: "20px" }}>
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                </button>
 
-              {notifOpen && (
-                <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-2xl shadow-elevated border border-[#DDDDDD] z-50 animate-fade-in dark:bg-[#1a1a1a] dark:border-[#2a2a2a]">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-[#DDDDDD] dark:border-[#2a2a2a]">
-                    <h3 className="text-sm font-bold text-[#000E1A] dark:text-white">Thông báo</h3>
-                    {unreadCount > 0 && (
-                      <button
-                        onClick={markAllAsRead}
-                        className="text-xs text-[#0046C1] hover:underline cursor-pointer dark:text-[#60a5fa]"
-                      >
-                        Đánh dấu đã đọc
-                      </button>
-                    )}
-                  </div>
-                  <div className="max-h-72 overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <div className="py-8 text-center text-sm text-[#999999] dark:text-[#71717a]">
-                        Chưa có thông báo nào
-                      </div>
-                    ) : (
-                      notifications.map((notif) => {
-                        const Icon = notifIcons[notif.type] || Bell;
-                        const colorClass = notifColors[notif.type];
-                        return (
-                          <button
-                            key={notif.id}
-                            onClick={() => markAsRead(notif.id)}
-                            className={cn(
-                              "w-full text-left px-4 py-3 border-b border-[#F7F7F7] hover:bg-[#F7F7F7] transition-colors cursor-pointer dark:border-[#2a2a2a] dark:hover:bg-[#262626]",
-                              !notif.read && "bg-[#E6F0FF]/30 dark:bg-[#1e3a5f]/30"
-                            )}
-                          >
-                            <div className="flex items-start gap-3">
-                              <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5", colorClass)}>
-                                <Icon className="w-4 h-4" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <p className="text-sm font-semibold text-[#000E1A] dark:text-white truncate">
-                                    {notif.title}
-                                  </p>
-                                  {!notif.read && (
-                                    <span className="w-2 h-2 bg-[#ED1D24] rounded-full shrink-0" />
-                                  )}
+                {notifOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-2xl shadow-elevated border border-[#DDDDDD] z-50 animate-fade-in dark:bg-[#1a1a1a] dark:border-[#2a2a2a]">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[#DDDDDD] dark:border-[#2a2a2a]">
+                      <h3 className="text-sm font-bold text-[#000E1A] dark:text-white">Thông báo</h3>
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={markAllAsRead}
+                          className="text-xs text-[#0046C1] hover:underline cursor-pointer dark:text-[#60a5fa]"
+                        >
+                          Đánh dấu đã đọc
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-72 overflow-y-auto">
+                      {notifications.length === 0 ? (
+                        <div className="py-8 text-center text-sm text-[#999999] dark:text-[#71717a]">
+                          Chưa có thông báo nào
+                        </div>
+                      ) : (
+                        notifications.map((notif) => {
+                          const Icon = notifIcons[notif.type] || Bell;
+                          const colorClass = notifColors[notif.type];
+                          return (
+                            <button
+                              key={notif.id}
+                              onClick={() => markAsRead(notif.id)}
+                              className={cn(
+                                "w-full text-left px-4 py-3 border-b border-[#F7F7F7] hover:bg-[#F7F7F7] transition-colors cursor-pointer dark:border-[#2a2a2a] dark:hover:bg-[#262626]",
+                                !notif.read && "bg-[#E6F0FF]/30 dark:bg-[#1e3a5f]/30"
+                              )}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5", colorClass)}>
+                                  <Icon className="w-4 h-4" />
                                 </div>
-                                <p className="text-xs text-[#636363] mt-0.5 line-clamp-2 dark:text-[#a1a1aa]">
-                                  {notif.message}
-                                </p>
-                                <p className="text-[10px] text-[#999999] mt-1 dark:text-[#71717a]">
-                                  {notif.time}
-                                </p>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-sm font-semibold text-[#000E1A] dark:text-white truncate">
+                                      {notif.title}
+                                    </p>
+                                    {!notif.read && (
+                                      <span className="w-2 h-2 bg-[#ED1D24] rounded-full shrink-0" />
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-[#636363] mt-0.5 line-clamp-2 dark:text-[#a1a1aa]">
+                                    {notif.message}
+                                  </p>
+                                  <p className="text-[10px] text-[#999999] mt-1 dark:text-[#71717a]">
+                                    {notif.time}
+                                  </p>
+                                </div>
                               </div>
-                            </div>
-                          </button>
-                        );
-                      })
-                    )}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                    <div className="px-4 py-3 border-t border-[#DDDDDD] dark:border-[#2a2a2a]">
+                      <Link href="/notifications" onClick={() => setNotifOpen(false)}>
+                        <button className="w-full text-center text-sm text-[#0046C1] font-semibold hover:underline cursor-pointer dark:text-[#60a5fa]">
+                          Xem tất cả thông báo
+                        </button>
+                      </Link>
+                    </div>
                   </div>
-                  <div className="px-4 py-3 border-t border-[#DDDDDD] dark:border-[#2a2a2a]">
-                    <Link href="/notifications" onClick={() => setNotifOpen(false)}>
-                      <button className="w-full text-center text-sm text-[#0046C1] font-semibold hover:underline cursor-pointer dark:text-[#60a5fa]">
-                        Xem tất cả thông báo
-                      </button>
-                    </Link>
-                  </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
             {/* Language Toggle */}
             <button
@@ -294,7 +306,7 @@ export default function Navbar() {
 
             {/* Auth Section */}
             <div className="hidden lg:flex items-center gap-2 ml-1">
-              {isAuthenticated ? (
+              {hasToken ? (
                 <>
                   <Link href="/bookings">
                     <button className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-[#636363] hover:text-[#0046C1] hover:bg-[#F7F7F7] rounded-xl transition-all duration-200 cursor-pointer dark:text-[#a1a1aa] dark:hover:text-[#60a5fa] dark:hover:bg-[#1a1a1a]">
@@ -362,6 +374,20 @@ export default function Navbar() {
                             <button className="w-full inline-flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-[#636363] hover:text-[#ED1D24] hover:bg-[#FFE5E3] transition-all duration-200 cursor-pointer dark:text-[#a1a1aa] dark:hover:text-[#f87171] dark:hover:bg-[#2a1a1a]">
                               <Heart className="w-4 h-4" />
                               Tour đã lưu
+                            </button>
+                          </Link>
+
+                          <Link href="/pre-trip" onClick={() => setUserMenuOpen(false)}>
+                            <button className="w-full inline-flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-[#636363] hover:text-[#0046C1] hover:bg-[#F7F7F7] transition-all duration-200 cursor-pointer dark:text-[#a1a1aa] dark:hover:text-[#60a5fa] dark:hover:bg-[#262626]">
+                              <CheckCircle2 className="w-4 h-4" />
+                              Chuẩn bị chuyến đi
+                            </button>
+                          </Link>
+
+                          <Link href="/post-trip" onClick={() => setUserMenuOpen(false)}>
+                            <button className="w-full inline-flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-[#636363] hover:text-[#0046C1] hover:bg-[#F7F7F7] transition-all duration-200 cursor-pointer dark:text-[#a1a1aa] dark:hover:text-[#60a5fa] dark:hover:bg-[#262626]">
+                              <Star className="w-4 h-4" />
+                              Sau chuyến đi
                             </button>
                           </Link>
 
@@ -457,10 +483,17 @@ export default function Navbar() {
               </button>
             </Link>
 
-            <Link href="/wishlist" onClick={() => setMobileOpen(false)}>
-              <button className="w-full text-left inline-flex items-center gap-3 px-4 py-3 text-sm font-semibold text-[#636363] hover:text-[#ED1D24] hover:bg-[#FFE5E3] rounded-xl transition-all duration-200 cursor-pointer dark:text-[#a1a1aa] dark:hover:text-[#f87171] dark:hover:bg-[#2a1a1a]">
-                <Heart className="w-5 h-5" />
-                Tour đã lưu
+            <Link href="/pre-trip" onClick={() => setMobileOpen(false)}>
+              <button className="w-full text-left inline-flex items-center gap-3 px-4 py-3 text-sm font-semibold text-[#636363] hover:text-[#0046C1] hover:bg-[#F7F7F7] rounded-xl transition-all duration-200 cursor-pointer dark:text-[#a1a1aa] dark:hover:text-[#60a5fa] dark:hover:bg-[#1a1a1a]">
+                <CheckCircle2 className="w-5 h-5" />
+                Chuẩn bị chuyến đi
+              </button>
+            </Link>
+
+            <Link href="/post-trip" onClick={() => setMobileOpen(false)}>
+              <button className="w-full text-left inline-flex items-center gap-3 px-4 py-3 text-sm font-semibold text-[#636363] hover:text-[#0046C1] hover:bg-[#F7F7F7] rounded-xl transition-all duration-200 cursor-pointer dark:text-[#a1a1aa] dark:hover:text-[#60a5fa] dark:hover:bg-[#1a1a1a]">
+                <Star className="w-5 h-5" />
+                Sau chuyến đi
               </button>
             </Link>
 
@@ -484,7 +517,7 @@ export default function Navbar() {
 
             {/* Auth divider */}
             <div className="border-t border-[#DDDDDD] my-2 dark:border-[#2a2a2a]" />
-            {isAuthenticated ? (
+            {hasToken ? (
               <div className="flex flex-col gap-1">
                 {user?.role === "ADMIN" && (
                   <Link href="/admin" onClick={() => setMobileOpen(false)}>

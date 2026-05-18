@@ -9,47 +9,8 @@ import {
   Ticket,
   HelpCircle,
   Building2,
-  Info,
-  Users,
-  Briefcase,
-  Shield,
-  MessageCircle,
-  Star,
   Award,
 } from "lucide-react";
-
-const COLUMNS = [
-  {
-    title: "Dịch vụ",
-    icon: Ticket,
-    links: [
-      { href: "/tours", label: "Tours" },
-      { href: "/chat", label: "AI Chat" },
-      { href: "/bookings", label: "Đặt tour" },
-      { href: "#", label: "Khuyến mãi" },
-    ],
-  },
-  {
-    title: "Hỗ trợ",
-    icon: HelpCircle,
-    links: [
-      { href: "#", label: "Trung tâm trợ giúp" },
-      { href: "#", label: "Liên hệ" },
-      { href: "#", label: "Câu hỏi thường gặp" },
-      { href: "#", label: "Chính sách" },
-    ],
-  },
-  {
-    title: "Công ty",
-    icon: Building2,
-    links: [
-      { href: "#", label: "Giới thiệu" },
-      { href: "#", label: "Blog" },
-      { href: "#", label: "Tuyển dụng" },
-      { href: "#", label: "Điều khoản" },
-    ],
-  },
-];
 
 export default function Footer() {
   return (
@@ -76,33 +37,107 @@ export default function Footer() {
             </div>
           </div>
 
-          {COLUMNS.map((col) => (
-            <div key={col.title} className="space-y-4">
-              <div className="flex items-center gap-2">
-                <col.icon className="w-4 h-4" style={{ color: "#0046C1" }} />
-                <h4 className="font-bold text-lg">{col.title}</h4>
-              </div>
-              <ul className="space-y-3">
-                {col.links.map((link) => (
-                  <li key={link.label}>
-                    <Link
-                      href={link.href}
-                      className="transition-colors inline-flex items-center gap-1.5 group"
-                      style={{ color: "#999999" }}
-                    >
-                      <span
-                        className="transition-all"
-                        style={{ color: "#0046C1", opacity: 0 }}
-                      >
-                        ›
-                      </span>
-                      {link.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+          {/* Services */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Ticket className="w-4 h-4" style={{ color: "#0046C1" }} />
+              <h4 className="font-bold text-lg">Dịch vụ</h4>
             </div>
-          ))}
+            <ul className="space-y-3">
+              <li>
+                <Link href="/tours" className="transition-colors inline-flex items-center gap-1.5 group" style={{ color: "#999999" }}>
+                  <span className="transition-all" style={{ color: "#0046C1", opacity: 0 }}>›</span>
+                  Tours
+                </Link>
+              </li>
+              <li>
+                <Link href="/chat" className="transition-colors inline-flex items-center gap-1.5 group" style={{ color: "#999999" }}>
+                  <span className="transition-all" style={{ color: "#0046C1", opacity: 0 }}>›</span>
+                  AI Chat
+                </Link>
+              </li>
+              <li>
+                <Link href="/bookings" className="transition-colors inline-flex items-center gap-1.5 group" style={{ color: "#999999" }}>
+                  <span className="transition-all" style={{ color: "#0046C1", opacity: 0 }}>›</span>
+                  Đặt tour
+                </Link>
+              </li>
+              <li>
+                <Link href="#" className="transition-colors inline-flex items-center gap-1.5 group" style={{ color: "#999999" }}>
+                  <span className="transition-all" style={{ color: "#0046C1", opacity: 0 }}>›</span>
+                  Khuyến mãi
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Support */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <HelpCircle className="w-4 h-4" style={{ color: "#0046C1" }} />
+              <h4 className="font-bold text-lg">Hỗ trợ</h4>
+            </div>
+            <ul className="space-y-3">
+              <li>
+                <Link href="#" className="transition-colors inline-flex items-center gap-1.5 group" style={{ color: "#999999" }}>
+                  <span className="transition-all" style={{ color: "#0046C1", opacity: 0 }}>›</span>
+                  Trung tâm trợ giúp
+                </Link>
+              </li>
+              <li>
+                <Link href="#" className="transition-colors inline-flex items-center gap-1.5 group" style={{ color: "#999999" }}>
+                  <span className="transition-all" style={{ color: "#0046C1", opacity: 0 }}>›</span>
+                  Liên hệ
+                </Link>
+              </li>
+              <li>
+                <Link href="#" className="transition-colors inline-flex items-center gap-1.5 group" style={{ color: "#999999" }}>
+                  <span className="transition-all" style={{ color: "#0046C1", opacity: 0 }}>›</span>
+                  Câu hỏi thường gặp
+                </Link>
+              </li>
+              <li>
+                <Link href="#" className="transition-colors inline-flex items-center gap-1.5 group" style={{ color: "#999999" }}>
+                  <span className="transition-all" style={{ color: "#0046C1", opacity: 0 }}>›</span>
+                  Chính sách
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Company */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Building2 className="w-4 h-4" style={{ color: "#0046C1" }} />
+              <h4 className="font-bold text-lg">Công ty</h4>
+            </div>
+            <ul className="space-y-3">
+              <li>
+                <Link href="#" className="transition-colors inline-flex items-center gap-1.5 group" style={{ color: "#999999" }}>
+                  <span className="transition-all" style={{ color: "#0046C1", opacity: 0 }}>›</span>
+                  Giới thiệu
+                </Link>
+              </li>
+              <li>
+                <Link href="#" className="transition-colors inline-flex items-center gap-1.5 group" style={{ color: "#999999" }}>
+                  <span className="transition-all" style={{ color: "#0046C1", opacity: 0 }}>›</span>
+                  Blog
+                </Link>
+              </li>
+              <li>
+                <Link href="#" className="transition-colors inline-flex items-center gap-1.5 group" style={{ color: "#999999" }}>
+                  <span className="transition-all" style={{ color: "#0046C1", opacity: 0 }}>›</span>
+                  Tuyển dụng
+                </Link>
+              </li>
+              <li>
+                <Link href="#" className="transition-colors inline-flex items-center gap-1.5 group" style={{ color: "#999999" }}>
+                  <span className="transition-all" style={{ color: "#0046C1", opacity: 0 }}>›</span>
+                  Điều khoản
+                </Link>
+              </li>
+            </ul>
+          </div>
         </div>
 
         <div

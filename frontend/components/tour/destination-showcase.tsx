@@ -4,19 +4,20 @@ import Link from "next/link";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { tourApi } from "@/lib/tour-api";
+import { DESTINATION_IMAGES } from "@/lib/destination-images";
 import type { Tour } from "@/types";
 import { MapPin, ArrowRight } from "lucide-react";
 
 // ─── Destination data ──────────────────────────────────────────────────────────────
 const DESTINATIONS = [
-  { name: "Đà Nẵng", slug: "da-nang", emoji: "🏖️", image: "https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?w=600", tourCount: 4 },
-  { name: "Phú Quốc", slug: "phu-quoc", emoji: "🏝️", image: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=600", tourCount: 2 },
-  { name: "Hội An", slug: "hoi-an", emoji: "🏮", image: "https://images.unsplash.com/photo-1557794008-66bf5d6f6e97?w=600", tourCount: 2 },
-  { name: "Hạ Long", slug: "ha-long", emoji: "⛵", image: "https://images.unsplash.com/photo-1528127269322-539801943592?w=600", tourCount: 1 },
-  { name: "Sapa", slug: "sapa", emoji: "🏔️", image: "https://images.unsplash.com/photo-1597007064818-11d2395dc5df?w=600", tourCount: 1 },
-  { name: "Nha Trang", slug: "nha-trang", emoji: "🌊", image: "https://images.unsplash.com/photo-1519046904884-53103b34b206?w=600", tourCount: 1 },
-  { name: "Bangkok", slug: "bangkok", emoji: "🛕", image: "https://images.unsplash.com/photo-1508009603885-50cf7c579dd5?w=600", tourCount: 1 },
-  { name: "Bali", slug: "bali", emoji: "🌺", image: "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=600", tourCount: 1 },
+  { name: "Đà Nẵng", slug: "da-nang", emoji: "🏖️", images: DESTINATION_IMAGES["danang"], tourCount: 4 },
+  { name: "Phú Quốc", slug: "phu-quoc", emoji: "🏝️", images: DESTINATION_IMAGES["phuquoc"], tourCount: 2 },
+  { name: "Hội An", slug: "hoi-an", emoji: "🏮", images: DESTINATION_IMAGES["hoian"], tourCount: 2 },
+  { name: "Hạ Long", slug: "ha-long", emoji: "⛵", images: DESTINATION_IMAGES["halong"], tourCount: 1 },
+  { name: "Sapa", slug: "sapa", emoji: "🏔️", images: DESTINATION_IMAGES["sapa"], tourCount: 1 },
+  { name: "Nha Trang", slug: "nha-trang", emoji: "🌊", images: DESTINATION_IMAGES["nhatrang"], tourCount: 1 },
+  { name: "Bangkok", slug: "bangkok", emoji: "🛕", images: DESTINATION_IMAGES["bangkok"], tourCount: 1 },
+  { name: "Bali", slug: "bali", emoji: "🌺", images: DESTINATION_IMAGES["bali"], tourCount: 1 },
 ];
 
 const PRIMARY = "#0046C1";
@@ -32,6 +33,7 @@ function DestinationCard({
   onHover: (v: boolean) => void;
   isHovered: boolean;
 }) {
+  const img = dest.images[0];
   return (
     <Link
       href={`/tours?search=${encodeURIComponent(dest.name)}`}
@@ -40,7 +42,7 @@ function DestinationCard({
       onMouseLeave={() => onHover(false)}
     >
       <Image
-        src={dest.image}
+        src={img}
         alt={dest.name}
         fill
         className={cn(

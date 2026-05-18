@@ -3,6 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/utils";
+import { getDestinationImage } from "@/lib/destination-images";
 import { Star, MapPin, Clock, ArrowRight } from "lucide-react";
 import type { Tour } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -14,47 +15,6 @@ const SURFACE_LIGHT = "#D9EEFF";
 const NAVY = "#000E1A";
 const GRAY = "#636363";
 
-// Fallback images by destination
-const FALLBACK_IMAGES: Record<string, string[]> = {
-  beach: [
-    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800",
-    "https://images.unsplash.com/photo-1519046904884-53103b34b206?w=800",
-  ],
-  island: [
-    "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800",
-    "https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800",
-  ],
-  mountain: [
-    "https://images.unsplash.com/photo-1528181304800-259b08848526?w=800",
-    "https://images.unsplash.com/photo-1597007064818-11d2395dc5df?w=800",
-  ],
-  city: [
-    "https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?w=800",
-    "https://images.unsplash.com/photo-1561626423-a51b45aef0a1?w=800",
-  ],
-  default: [
-    "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800",
-    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800",
-  ],
-};
-
-function getSmartFallback(destination: string): string {
-  const dest = destination.toLowerCase();
-  if (dest.includes("phú quốc") || dest.includes("côn đảo") || dest.includes("con dao")) {
-    return FALLBACK_IMAGES.island[0];
-  }
-  if (dest.includes("nha trang") || dest.includes("phan thiết") || dest.includes("vũng tàu")) {
-    return FALLBACK_IMAGES.beach[0];
-  }
-  if (dest.includes("sapa") || dest.includes("đà lạt")) {
-    return FALLBACK_IMAGES.mountain[0];
-  }
-  if (dest.includes("hội an") || dest.includes("huế") || dest.includes("đà nẵng")) {
-    return FALLBACK_IMAGES.city[0];
-  }
-  return FALLBACK_IMAGES.default[0];
-}
-
 interface TourResultCardProps {
   tour: Tour;
   onBook?: (tour: Tour) => void;
@@ -62,10 +22,9 @@ interface TourResultCardProps {
 }
 
 export function TourResultCard({ tour, onBook, className }: TourResultCardProps) {
-  const fallbackImage = getSmartFallback(tour.destination);
   const image = Array.isArray(tour.images) && tour.images.length > 0
     ? (typeof tour.images[0] === "string" ? tour.images[0] : (tour.images[0] as { url: string }).url)
-    : fallbackImage;
+    : getDestinationImage(tour.destination);
 
   const displayPrice = tour.discount_price ?? tour.price;
 

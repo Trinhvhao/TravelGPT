@@ -7,6 +7,7 @@ LLM Client - Production Ready
 """
 import asyncio
 import logging
+import json
 from typing import Optional, List, Callable, Union
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -263,31 +264,51 @@ class LLMClient:
                         # Retryable error (5xx)
                         raise LLMClientError(f"LLM API server error: {response.status}")
 
-                    data = await response.json()
-                    message = data["choices"][0]["message"]
-                    content = message.get("content") or ""
-                    finish_reason = data["choices"][0].get("finish_reason", "stop")
-
-                    # Parse tool calls if present
-                    tool_calls: List[ToolCall] = []
-                    if "tool_calls" in message and message["tool_calls"]:
-                        for tc in message["tool_calls"]:
-                            func = tc.get("function", {})
-                            tool_calls.append(ToolCall(
-                                name=func.get("name", ""),
-                                arguments=func.get("arguments", {}),
-                                id=tc.get("id", "")
-                            ))
+                    data = await response.text()
+                    # The LLM API proxy always returns SSE even for non-stream requests.
+                    # Parse SSE manually to extract the final complete message.
+                    full_content = ""
+                    llm_response_tool_calls = []
+                    current_tool_call = {}
+                    for line in data.split("\n"):
+                        line = line.strip()
+                        if line.startswith("data: "):
+                            raw = line[6:]
+                            if raw == "[DONE]" or not raw:
+                                continue
+                            try:
+                                chunk = json.loads(raw)
+                                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                                if delta.get("content"):
+                                    full_content += delta["content"]
+                                finish_reason = chunk.get("choices", [{}])[0].get("finish_reason")
+                                # Extract tool calls from delta
+                                for tc_delta in delta.get("tool_calls", []):
+                                    idx = tc_delta.get("index", 0)
+                                    # Ensure list is long enough
+                                    while len(llm_response_tool_calls) <= idx:
+                                        llm_response_tool_calls.append({"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
+                                    if tc_delta.get("id"):
+                                        llm_response_tool_calls[idx]["id"] = tc_delta["id"]
+                                    if tc_delta.get("function", {}).get("name"):
+                                        llm_response_tool_calls[idx]["function"]["name"] = tc_delta["function"]["name"]
+                                    if tc_delta.get("function", {}).get("arguments"):
+                                        llm_response_tool_calls[idx]["function"]["arguments"] += tc_delta["function"]["arguments"]
+                                # Stop after final chunk
+                                if finish_reason == "stop":
+                                    break
+                            except json.JSONDecodeError:
+                                continue
 
                     self.circuit_breaker._record_success()
 
-                    if tools and tool_calls:
+                    if tools and llm_response_tool_calls:
                         return ToolCallsResult(
-                            content=content,
-                            tool_calls=tool_calls,
-                            finish_reason=finish_reason
+                            content=full_content,
+                            tool_calls=llm_response_tool_calls,
+                            finish_reason=finish_reason or "stop"
                         )
-                    return content
+                    return full_content
 
             except asyncio.TimeoutError as e:
                 last_error = e

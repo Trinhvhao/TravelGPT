@@ -71,6 +71,15 @@ export const authApi = {
   },
 
   /**
+   * One-click demo login.
+   */
+  demoLogin: async (): Promise<AuthResponse> => {
+    const response = await api.post<AuthResponse>("/auth/demo-login");
+    storage.setTokens(response.data.access_token, response.data.refresh_token);
+    return response.data;
+  },
+
+  /**
    * Change password.
    */
   changePassword: async (current_password: string, new_password: string): Promise<void> => {

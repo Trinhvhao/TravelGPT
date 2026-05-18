@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useChatStore, CHAT_PRIMARY, CHAT_ACCENT, CHAT_GRAY, CHAT_SURFACE_LIGHT } from "@/stores/chat-store";
 import { X, MessageSquare, Trash2, Clock, Tag, ChevronRight } from "lucide-react";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 
@@ -14,6 +15,10 @@ interface ConversationListProps {
 export function ConversationList({ open, onClose, onSelectConversation }: ConversationListProps) {
   const { conversations, deleteConversation, clearAllConversations, sessionId } = useChatStore();
   const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; sessionId: string | null }>({
+    open: false,
+    sessionId: null,
+  });
 
   if (!open) return null;
 
@@ -23,10 +28,17 @@ export function ConversationList({ open, onClose, onSelectConversation }: Conver
     onClose();
   };
 
-  const handleDelete = (e: React.MouseEvent, sessionIdToDelete: string) => {
+  const openConfirmDelete = (e: React.MouseEvent, sessionIdToDelete: string) => {
     e.stopPropagation();
-    deleteConversation(sessionIdToDelete);
-    toast.success("Đã xóa cuộc trò chuyện");
+    setConfirmDelete({ open: true, sessionId: sessionIdToDelete });
+  };
+
+  const handleConfirmDelete = () => {
+    if (confirmDelete.sessionId) {
+      deleteConversation(confirmDelete.sessionId);
+      toast.success("Đã xóa cuộc trò chuyện");
+      setConfirmDelete({ open: false, sessionId: null });
+    }
   };
 
   const handleClearAll = () => {
@@ -216,7 +228,7 @@ export function ConversationList({ open, onClose, onSelectConversation }: Conver
 
                   {/* Delete button */}
                   <button
-                    onClick={(e) => handleDelete(e, conv.sessionId)}
+                    onClick={(e) => openConfirmDelete(e, conv.sessionId)}
                     className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
                     style={{ backgroundColor: "rgba(237,29,36,0.1)" }}
                     onMouseEnter={(e) => {
@@ -245,6 +257,18 @@ export function ConversationList({ open, onClose, onSelectConversation }: Conver
           }
         }
       `}</style>
+
+      {/* Confirm Delete Modal */}
+      <ConfirmModal
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete((prev) => ({ ...prev, open }))}
+        title="Xóa cuộc trò chuyện"
+        description="Bạn có chắc muốn xóa cuộc trò chuyện này? Hành động này không thể hoàn tác."
+        confirmText="Xóa"
+        cancelText="Hủy"
+        onConfirm={handleConfirmDelete}
+        variant="danger"
+      />
     </>
   );
 }

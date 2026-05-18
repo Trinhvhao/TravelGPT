@@ -53,6 +53,9 @@ class IntentDetector:
         ("xem tour", "list_all_tours", ["xem", "tour"]),
         ("list all tours", "list_all_tours", ["list", "all", "tours"]),
         ("show all tours", "list_all_tours", ["show", "all", "tours"]),
+        ("sau chuyến đi", "post_trip", ["sau", "chuyến", "đi"]),
+        ("điểm tích lũy", "post_trip", ["điểm", "tích", "lũy"]),
+        ("tích điểm", "post_trip", ["tích", "điểm"]),
     ]
 
     # Intent-specific patterns (ordered by priority)
@@ -104,14 +107,29 @@ class IntentDetector:
             "weight": 1.0
         },
         "search_tour": {
-            "patterns": ["tìm\\s*tour", "tìm\\s*kiếm", "gợi ý\\s*tour", "đề xuất\\s*tour", "có\\s*tour\\s*nào", "muốn\\s*đi", "du lịch", "check\\s*tour", "recommend"],
+            "patterns": [
+                "tìm\\s*tour", "tìm\\s*kiếm", "gợi ý\\s*tour", "đề xuất\\s*tour", 
+                "có\\s*tour\\s*nào", "muốn\\s*đi", "du lịch", "check\\s*tour", 
+                "recommend",
+                # "thông tin tour" + destination (NOT specific tour name) → search
+                "thông tin\\s*(về\\s*)?tour", "chi tiết\\s*(về\\s*)?tour",
+                "tour\\s+hà nội", "tour\\s+hạ long", "tour\\s+đà nẵng",
+                "tour\\s+sapa", "tour\\s+hoi an", "tour\\s+nha trang",
+                "tour\\s+phú quốc", "tour\\s+hội an"
+            ],
             "priority": 11,
             "weight": 1.0
         },
         "get_tour_detail": {
-            "patterns": ["chi tiết", "thông tin\\s*(chi tiết|tour)", "xem\\s*thêm", "mô tả\\s*tour", "lịch trình", "hành trình", "itinerary"],
+            "patterns": [
+                # Must have specific tour name or ID - NOT just destination
+                "^chi tiết\\s+tour\\s+[A-Z]",  # "chi tiết tour TourName"
+                "^thông tin\\s+tour\\s+[A-Z]",  # "thông tin tour TourName" (with specific name)
+                "^mô tả\\s+tour\\s+[A-Z]",
+                "slug\\s*:", "tour_id\\s*:", "id\\s*:[a-zA-Z0-9]"
+            ],
             "priority": 12,
-            "weight": 0.9
+            "weight": 0.95
         },
         "price_inquiry": {
             "patterns": ["giá\\s*(bao nhiêu|nào|ả)", "bao nhiêu\\s*tiền", "giá\\s*tour", "price", "chi phí", "tiền\\s*nào"],
@@ -149,9 +167,19 @@ class IntentDetector:
             "weight": 0.9
         },
         "small_talk": {
-            "patterns": ["bạn khỏe\\s*không", "thời tiết\\s*(thế nào|nào)", "how\\s*are\\s*you", "you\\s*are"],
+            "patterns": ["bạn khỏe\\s*không", "how\\s*are\\s*you", "you\\s*are"],
             "priority": 40,
             "weight": 0.8
+        },
+        "weather_inquiry": {
+            "patterns": ["thời tiết", "weather", "nắng\\s*(nhiều|ít)", "mưa\\s*(nhiều|ít)", "nhiệt độ", "độ\\s*C", "ấm\\s*không", "lạnh\\s*không", "nên\\s*mang\\s*gì", "mang\\s*theo\\s*gì", "tháng\\s*nào\\s*đẹp", "thời\\s*điểm\\s*tốt"],
+            "priority": 42,
+            "weight": 1.0
+        },
+        "post_trip": {
+            "patterns": ["sau\\s*chuyến", "chuyến\\s*đi\\s*tuyệt", "tích\\s*điểm", "điểm\\s*tích\\s*lũy", "loyalty", "quà\\s*sau", "nhận\\s*quà", "sau\\s*trip"],
+            "priority": 43,
+            "weight": 1.0
         },
         "provide_booking_info": {
             "patterns": ["tên\\s*(là|tôi)", "email\\s*(là|:)", "số\\s*(điện thoại|dt)", "ngày\\s*sinh", "số\\s*người"],
@@ -203,6 +231,7 @@ class IntentDetector:
         "help": "show_help_options",
         "identity_question": "introduce_self",
         "small_talk": "casual_conversation",
+        "weather_inquiry": "show_weather_info",
     }
 
     def __init__(self):

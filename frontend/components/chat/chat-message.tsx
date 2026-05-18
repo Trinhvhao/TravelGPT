@@ -5,6 +5,8 @@ import type { ChatMessage } from "@/types";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { Bot, User } from "lucide-react";
+import { renderContent } from "@/lib/render-content";
+import { renderContentBlocks } from "@/components/chat/rich-content-blocks";
 
 // ─── Design Tokens (Airbnb Style) ──────────────────────────────────────────────
 const PRIMARY = "#0046C1";
@@ -13,6 +15,32 @@ const SURFACE_LIGHT = "#D9EEFF";
 const NAVY = "#000E1A";
 const GRAY = "#636363";
 
+/** Check if content_blocks contains tour cards */
+function hasTourCards(blocks?: Array<{ type: string }>): boolean {
+  if (!blocks) return false;
+  return blocks.some((b) => b.type === "tour_card" || b.type === "tour_carousel");
+}
+
+/** Filter out tour list items from markdown text */
+function filterTourListFromText(text: string): string {
+  const lines = text.split("\n");
+  const filtered = lines.filter((line) => {
+    const trimmed = line.trim();
+    if (/^\d+\.\s+Tour\s+/i.test(trimmed)) return false;
+    if (/^[*_\-]{3,}$/.test(trimmed)) return false;
+    if (/^\s+[📍⏱💰🎉✅✈️🏨]/.test(trimmed)) return false;
+    if (/^\d+[\.\)]$/.test(trimmed)) return false;
+    if (/tìm thấy\s+\d+\s+tour/i.test(trimmed)) return false;
+    if (/đặt ngay|xem chi tiết|chi tiết/i.test(trimmed)) return false;
+    // Skip lines that are just category names (cultural, beach, nature, etc.)
+    if (/^(cultural|beach|nature|adventure|city|mountain|heritage|island)$/i.test(trimmed)) return false;
+    // Skip lines starting with Tour and ending with category-like words
+    if (/^Tour\s+.+(cultural|beach|nature|adventure|city|mountain|heritage|island)$/i.test(trimmed)) return false;
+    return true;
+  });
+  return filtered.join("\n");
+}
+
 interface ChatMessageProps {
   message: ChatMessage;
   className?: string;
@@ -20,10 +48,11 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message, className }: ChatMessageProps) {
   const isUser = message.role === "user";
+  const showCards = !isUser && hasTourCards(message.content_blocks);
 
   return (
     <div className={cn(
-      "flex gap-3",
+      "flex w-full gap-3",
       isUser ? "flex-row-reverse" : "flex-row",
       className
     )}>
@@ -45,7 +74,7 @@ export function ChatMessage({ message, className }: ChatMessageProps) {
 
       {/* Bubble (Airbnb Style) */}
       <div className={cn(
-        "max-w-[75%] min-w-0",
+        "flex flex-col flex-1 min-w-0",
         isUser ? "items-end" : "items-start"
       )}>
         <div className={cn(
@@ -66,8 +95,23 @@ export function ChatMessage({ message, className }: ChatMessageProps) {
               }
         }
         >
-          {message.content}
+          {/* Render text - filter tour list if cards present */}
+          {showCards ? (
+            <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
+              {filterTourListFromText(message.content)}
+            </p>
+          ) : (
+            renderContent(message.content)
+          )}
         </div>
+
+        {/* Rich content blocks (tour cards) */}
+        {!isUser && message.content_blocks && message.content_blocks.length > 0 && (
+          <div className="mt-3">
+            {renderContentBlocks(message.content_blocks)}
+          </div>
+        )}
+
         {message.created_at && (
           <p
             className="text-[11px] mt-1 px-1"
