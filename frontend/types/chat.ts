@@ -2,7 +2,7 @@
 // Chat/AI Types — mirrors backend schemas/chat.py + ai/graph.py
 // ============================================================
 
-export type MessageRole = "user" | "assistant" | "system";
+export type MessageRole = "user" | "assistant" | "system" | "tool";
 export type ConversationState =
   | "IDLE"
   | "SEARCHING"
@@ -81,7 +81,7 @@ export interface ChatRequest {
 
 export interface ChatMessage {
   id: string;
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "tool";
   content: string;
   created_at?: string;
   metadata?: Record<string, unknown>;

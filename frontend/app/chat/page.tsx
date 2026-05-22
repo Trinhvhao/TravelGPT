@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useChatStore } from "@/stores/chat-store";
+import { chatApi } from "@/lib/chat-api";
+import type { ChatMessage as ChatMessageResponse } from "@/types/chat";
 import type {
   ChatMessage,
   ChatSuggestion,
@@ -42,6 +45,7 @@ import {
   Loader2,
   Search,
   Globe,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -90,6 +94,7 @@ function AssistantBubble({
   toolStatus,
   toolLabel,
   onSuggestionClick,
+  isError,
 }: {
   content: string;
   intent?: string;
@@ -97,22 +102,30 @@ function AssistantBubble({
   toolStatus?: string;
   toolLabel?: string;
   onSuggestionClick?: (text: string) => void;
+  isError?: boolean;
 }) {
   return (
     <div className="flex gap-3 animate-[slide-up_0.3s_ease-out]">
       <div
         className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg"
-        style={{ background: `linear-gradient(135deg, ${PRIMARY}, ${ACCENT})` }}
+        style={{ background: isError ? "#DC2626" : `linear-gradient(135deg, ${PRIMARY}, ${ACCENT})` }}
       >
-        <Bot className="h-5 w-5 text-white" />
+        {isError ? (
+          <AlertCircle className="h-5 w-5 text-white" />
+        ) : (
+          <Bot className="h-5 w-5 text-white" />
+        )}
       </div>
       <div className="flex-1 space-y-3 max-w-[85%]">
         <Card
           className="border-0 shadow-lg p-5"
           style={{
-            backgroundColor: "#FFFFFF",
+            backgroundColor: isError ? "#FEF2F2" : "#FFFFFF",
             borderRadius: "20px 20px 20px 4px",
-            boxShadow: "0 4px 20px rgba(0,70,193,0.12)",
+            boxShadow: isError
+              ? "0 4px 20px rgba(220,38,38,0.15)"
+              : "0 4px 20px rgba(0,70,193,0.12)",
+            border: isError ? "1px solid #FECACA" : "none",
           }}
         >
           {/* Tool status indicator */}
@@ -129,7 +142,18 @@ function AssistantBubble({
             </div>
           )}
 
-          <div className="whitespace-pre-wrap text-[15px] leading-relaxed" style={{ color: NAVY }}>
+          {/* Error indicator */}
+          {isError && (
+            <div
+              className="flex items-center gap-2 mb-3 text-xs font-medium px-3 py-1.5 rounded-full"
+              style={{ backgroundColor: "#FEE2E2", color: "#DC2626" }}
+            >
+              <AlertCircle className="h-3 w-3 flex-shrink-0" />
+              <span>Có lỗi xảy ra</span>
+            </div>
+          )}
+
+          <div className="whitespace-pre-wrap text-[15px] leading-relaxed" style={{ color: isError ? "#7F1D1D" : NAVY }}>
             {renderContent(content)}
           </div>
         </Card>
@@ -239,9 +263,11 @@ function StreamingBubble() {
 function TourResultInline({
   tours,
   onBook,
+  router,
 }: {
   tours: Tour[];
   onBook: (tour: Tour) => void;
+  router: ReturnType<typeof useRouter> | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const display = expanded ? tours : tours.slice(0, 2);
@@ -256,6 +282,7 @@ function TourResultInline({
             borderRadius: "16px",
             boxShadow: "0 4px 20px rgba(0,70,193,0.1)",
           }}
+          onClick={() => router?.push(`/tours/${tour.slug}`)}
           onMouseEnter={(e) => {
             (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)";
             (e.currentTarget as HTMLDivElement).style.boxShadow = "0 8px 30px rgba(0,70,193,0.18)";
@@ -570,6 +597,7 @@ export default function ChatPage() {
   // Image attachments
   const { attachments, addAttachments, removeAttachment, clearAttachments, hasAttachments } =
     useImageAttachments();
+  const router = useRouter();
 
   const {
     messages,
@@ -686,9 +714,8 @@ export default function ChatPage() {
       created_at: new Date().toISOString(),
     });
 
-    // Small delay to let "Đang suy nghĩ..." show first
-    await new Promise(r => setTimeout(r, 300));
-    setStreaming(true);
+    // Use ref to track first content (persists across renders)
+    const hasFirstContent = { current: false };
 
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3008/api/v1";
@@ -710,15 +737,18 @@ export default function ChatPage() {
 
       if (!response.ok || !response.body) {
         const data = await response.json().catch(() => null);
-        const textContent =
-          data?.message || data?.response || "Xin lỗi, dịch vụ tạm thời gián đoạn. Bạn thử lại nhé.";
+        const errorMessage =
+          data?.message || data?.response || "Xin lỗi, có lỗi xảy ra. Bạn có thể thử lại không?";
         useChatStore.setState((state) => ({
           messages: state.messages.map((m) =>
-            m.id === streamingId ? { ...m, content: textContent } : m
+            m.id === streamingId
+              ? { ...m, content: errorMessage, metadata: { ...m.metadata, isError: true } }
+              : m
           ),
         }));
         setLoading(false);
         setStreaming(false);
+        toast.error("Dịch vụ tạm thời gián đoạn. Vui lòng thử lại.");
         return;
       }
 
@@ -743,6 +773,11 @@ export default function ChatPage() {
             const event = JSON.parse(raw);
 
             if (event.type === "content") {
+              // Only start streaming animation when first content arrives
+              if (!hasFirstContent.current) {
+                hasFirstContent.current = true;
+                setStreaming(true);
+              }
               // Show tool status while streaming
               if (event.intent) {
                 const ts = getToolStatus(event.intent);
@@ -818,15 +853,29 @@ export default function ChatPage() {
       scrollToBottom();
     } catch (error: unknown) {
       const isAbort = error instanceof DOMException && error.name === "AbortError";
+      let errorMessage = "Xin lỗi, có lỗi xảy ra. Bạn có thể thử lại không?";
+
+      if (isAbort) {
+        errorMessage = "Phản hồi từ AI quá chậm. Bạn có thể thử lại không?";
+      }
+
+      // Update the streaming message to show error content
+      useChatStore.setState((state) => ({
+        messages: state.messages.map((m) =>
+          m.id === streamingId
+            ? { ...m, content: errorMessage, metadata: { ...m.metadata, isError: true } }
+            : m
+        ),
+      }));
+
+      // Also show toast for additional notification
       if (isAbort) {
         toast.error("Phản hồi từ AI quá chậm. Vui lòng thử lại.");
       } else {
-        toast.error("Không thể gửi tin nhắn. Vui lòng thử lại.");
+        toast.error("Có lỗi xảy ra khi xử lý tin nhắn.");
       }
+
       console.error("Chat error:", error);
-      useChatStore.setState((state) => ({
-        messages: state.messages.slice(0, -1),
-      }));
       clearToolStatus();
       clearWebSearchResults();
     } finally {
@@ -874,13 +923,50 @@ export default function ChatPage() {
   };
 
   // Load conversation from history
-  const handleLoadConversation = (targetSessionId: string) => {
+  const handleLoadConversation = async (targetSessionId: string) => {
     const conversation = conversations.find((c) => c.sessionId === targetSessionId);
-    if (!conversation) return;
+    if (!conversation) {
+      toast.error("Không tìm thấy cuộc trò chuyện");
+      return;
+    }
 
-    setSessionId(targetSessionId);
-    clearMessages();
-    toast.success(`Đã tải cuộc trò chuyện: ${conversation.title}`);
+    // Show loading toast
+    const loadingToast = toast.loading(`Đang tải: ${conversation.title}...`);
+
+    try {
+      // Fetch messages from backend
+      const conversationData = await chatApi.getConversationMessages(targetSessionId);
+
+      if (conversationData && conversationData.messages && conversationData.messages.length > 0) {
+        // Convert API messages to ChatMessage format
+        const loadedMessages: ChatMessage[] = conversationData.messages.map((msg: ChatMessageResponse) => ({
+          id: msg.id || `msg_${Date.now()}`,
+          role: msg.role,
+          content: msg.content,
+          created_at: msg.created_at || new Date().toISOString(),
+          metadata: msg.metadata,
+        }));
+
+        // Set session and load messages
+        setSessionId(targetSessionId);
+        _setMessages(loadedMessages);
+        toast.success(`Đã tải ${loadedMessages.length} tin nhắn`, { id: loadingToast });
+      } else {
+        // Backend doesn't have messages - show info to user
+        setSessionId(targetSessionId);
+        _setMessages([]);
+        toast(
+          "Cuộc trò chuyện này chưa được lưu server. Vui lòng đăng nhập để đồng bộ.",
+          { id: loadingToast, duration: 4000 }
+        );
+      }
+    } catch (error) {
+      console.error("Failed to load conversation:", error);
+      // On error, still switch to the conversation (local)
+      setSessionId(targetSessionId);
+      _setMessages([]);
+      toast.error("Lỗi kết nối. Hiển thị chat mới.", { id: loadingToast });
+    }
   };
 
   // Retry failed message
@@ -934,11 +1020,12 @@ export default function ChatPage() {
                     isLast={isLast}
                     toolStatus={isLast && isStreaming ? toolStatus : undefined}
                     toolLabel={isLast && isStreaming ? toolLabel : undefined}
+                    isError={meta?.isError === true}
                   />
 
                   {/* Tour results - only show if NO content_blocks with tours */}
                   {tours.length > 0 && !message.content_blocks?.some((b: ContentBlock) => b.type === "tour_carousel" || b.type === "tour_card") && (
-                    <TourResultInline tours={tours} onBook={handleBookFromTour} />
+                    <TourResultInline tours={tours} onBook={handleBookFromTour} router={router} />
                   )}
 
                   {/* Web search results */}

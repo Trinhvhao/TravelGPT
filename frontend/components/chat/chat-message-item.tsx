@@ -16,11 +16,14 @@ import {
   Edit2,
   Loader2,
   Globe,
+  AlertCircle,
 } from "lucide-react";
 import { useChatStore, CHAT_PRIMARY, CHAT_ACCENT, CHAT_SURFACE_LIGHT, CHAT_GRAY } from "@/stores/chat-store";
 import toast from "react-hot-toast";
 import { renderContent } from "@/lib/render-content";
 import { renderContentBlocks } from "@/components/chat/rich-content-blocks";
+import { parseToursFromMarkdown, parsedToursToContentBlocks, hasMarkdownTours } from "@/lib/parse-tours";
+import { TourCardBlock } from "@/components/chat/tour-card-block";
 
 /** Check if content_blocks contains tour cards (to avoid duplicate display) */
 function hasTourCards(blocks?: Array<{ type: string }>): boolean {
@@ -56,6 +59,25 @@ function filterTourListFromText(text: string): string {
   return filtered.join("\n");
 }
 
+/** Extract parsed tours from markdown text */
+function getParsedTourCards(content: string, existingBlocks?: Array<{ type: string }>) {
+  // Only parse if there are no existing tour cards
+  if (existingBlocks?.some((b) => b.type === "tour_card" || b.type === "tour_carousel")) {
+    return null;
+  }
+
+  if (!hasMarkdownTours(content)) {
+    return null;
+  }
+
+  const parsedTours = parseToursFromMarkdown(content);
+  if (parsedTours.length === 0) {
+    return null;
+  }
+
+  return parsedToursToContentBlocks(parsedTours);
+}
+
 interface ChatMessageItemProps {
   message: ChatMessage;
   onRetry?: () => void;
@@ -63,6 +85,7 @@ interface ChatMessageItemProps {
   isLast?: boolean;
   toolStatus?: string;
   toolLabel?: string;
+  isError?: boolean;
 }
 
 export function ChatMessageItem({
@@ -72,6 +95,7 @@ export function ChatMessageItem({
   isLast,
   toolStatus,
   toolLabel,
+  isError = false,
 }: ChatMessageItemProps) {
   const isUser = message.role === "user";
   const [showActions, setShowActions] = useState(false);
@@ -119,7 +143,7 @@ export function ChatMessageItem({
       {!isUser && (
         <div
           className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-md self-start"
-          style={{ background: `linear-gradient(135deg, ${CHAT_PRIMARY}, ${CHAT_ACCENT})` }}
+          style={{ background: isError ? "#DC2626" : `linear-gradient(135deg, ${CHAT_PRIMARY}, ${CHAT_ACCENT})` }}
         >
           <Bot className="w-5 h-5 text-white" />
         </div>
@@ -209,6 +233,15 @@ export function ChatMessageItem({
                     color: "#FFFFFF",
                     alignSelf: "flex-end",
                   }
+                : isError
+                ? {
+                    backgroundColor: "#FEF2F2",
+                    borderRadius: "20px 20px 20px 4px",
+                    boxShadow: "0 4px 20px rgba(220,38,38,0.15)",
+                    color: "#7F1D1D",
+                    alignSelf: "flex-start",
+                    border: "1px solid #FECACA",
+                  }
                 : {
                     backgroundColor: "#FFFFFF",
                     borderRadius: "20px 20px 20px 4px",
@@ -218,6 +251,17 @@ export function ChatMessageItem({
                   }
             }
           >
+            {/* Error indicator */}
+            {isError && (
+              <div
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full mb-2"
+                style={{ backgroundColor: "#FEE2E2", color: "#DC2626" }}
+              >
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+                <span>Có lỗi xảy ra</span>
+              </div>
+            )}
+
             {/* Tool status */}
             {toolStatus && toolStatus !== "idle" && toolLabel && (
               <div
@@ -233,7 +277,7 @@ export function ChatMessageItem({
             )}
 
             {/* Render text content - filter out tour list if cards are present */}
-            {!isUser && hasTourCards(message.content_blocks) ? (
+            {!isUser && (hasTourCards(message.content_blocks) || hasMarkdownTours(message.content)) ? (
               <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
                 {filterTourListFromText(message.content)}
               </p>
@@ -247,6 +291,19 @@ export function ChatMessageItem({
                 {renderContentBlocks(message.content_blocks)}
               </div>
             )}
+
+            {/* Parse and display markdown tour cards (when no content_blocks tours exist) */}
+            {!isUser && (() => {
+              const parsedCards = getParsedTourCards(message.content, message.content_blocks);
+              if (!parsedCards) return null;
+              return (
+                <div className="mt-3 flex flex-wrap gap-3">
+                  {parsedCards.map((card, idx) => (
+                    <TourCardBlock key={idx} block={card} />
+                  ))}
+                </div>
+              );
+            })()}
 
             {/* User image attachments */}
             {isUser && message.attachments && message.attachments.length > 0 && (

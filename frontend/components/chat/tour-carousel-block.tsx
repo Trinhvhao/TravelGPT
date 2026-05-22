@@ -59,6 +59,15 @@ function MiniTourCard({
 
   const price = tour.discount_price || tour.price;
 
+  const handleClick = (e: React.MouseEvent) => {
+    // Don't navigate if clicking buttons
+    const target = e.target as HTMLElement;
+    if (target.tagName === "BUTTON" || target.closest("button")) {
+      return;
+    }
+    onDetail(tour);
+  };
+
   return (
     <div
       className="overflow-hidden border-0 transition-all duration-300 cursor-pointer group"
@@ -68,6 +77,7 @@ function MiniTourCard({
         boxShadow: "0 4px 16px rgba(0,70,193,0.1)",
         backgroundColor: "#fff",
       }}
+      onClick={handleClick}
       onMouseEnter={(e) => {
         (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)";
         (e.currentTarget as HTMLDivElement).style.boxShadow = "0 8px 24px rgba(0,70,193,0.15)";
@@ -200,8 +210,17 @@ export function TourCarouselBlock({ block }: { block: ContentBlockTourCarousel }
   };
 
   const handleDetail = (tour: TourCardData) => {
+    console.log("Tour carousel detail click:", { slug: tour.slug, name: tour.name });
     if (tour.slug) {
       router.push(`/tours/${tour.slug}`);
+    } else {
+      // Fallback: build slug from name
+      const slug = tour.name?.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+      if (slug) {
+        router.push(`/tours/${slug}`);
+      } else {
+        console.error("No slug or name:", tour);
+      }
     }
   };
 

@@ -1127,7 +1127,7 @@ async def send_message_stream(
 
             # Import required modules
             from app.core.llm_client import get_llm_client, LLMCircuitOpenError, LLMTimeoutError, ToolCallsResult
-            from app.ai.tools import TOOL_DEFINITIONS
+            from app.ai.llm_tools import TOOL_DEFINITIONS
             from app.ai.tools_executor import ToolExecutor
 
             llm_client = get_llm_client()

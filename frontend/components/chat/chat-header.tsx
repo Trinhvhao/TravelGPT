@@ -135,8 +135,9 @@ export function ChatHeader({ onReset, onLoadConversation }: ChatHeaderProps) {
       <ConversationList
         open={showConversationList}
         onClose={() => setShowConversationList(false)}
-        onSelectConversation={(sessId) => {
-          onLoadConversation(sessId);
+        onSelectConversation={async (sessId) => {
+          // Close panel after conversation loads
+          await onLoadConversation(sessId);
           setShowConversationList(false);
         }}
       />

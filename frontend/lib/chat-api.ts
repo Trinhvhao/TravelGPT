@@ -207,6 +207,22 @@ export const chatApi = {
   },
 
   /**
+   * Get messages for a specific conversation session.
+   */
+  getConversationMessages: async (sessionId: string): Promise<ConversationHistory | null> => {
+    try {
+      const response = await api.get<{ conversations: ConversationHistory[] }>("/chat/history", {
+        params: { session_id: sessionId },
+      });
+      // Backend returns { conversations: [...] }
+      return response.data.conversations?.[0] ?? null;
+    } catch (error) {
+      console.error("Failed to load conversation messages:", error);
+      return null;
+    }
+  },
+
+  /**
    * Clear all chat history for current user.
    */
   clearHistory: async (): Promise<void> => {

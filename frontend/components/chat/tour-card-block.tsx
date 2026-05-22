@@ -126,15 +126,36 @@ export function TourCardBlock({ block }: { block: ContentBlockTourCard }) {
   const handleViewDetail = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    console.log("TourCardBlock click:", { slug: data.slug, name: data.name });
     if (data.slug) {
       router.push(`/tours/${data.slug}`);
+    } else {
+      // Fallback: try to build slug from name
+      const slug = data.name?.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+      if (slug) {
+        router.push(`/tours/${slug}`);
+      } else {
+        console.error("No slug or name for tour:", data);
+      }
     }
   };
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Only navigate if clicking on card itself, not buttons
+    const target = e.target as HTMLElement;
+    if (target.tagName === "BUTTON" || target.closest("button")) {
+      return;
+    }
+    handleViewDetail(e);
+  };
+
   return (
-    <div className="w-full max-w-[320px] sm:max-w-[400px]">
+    <div 
+      className="w-full max-w-[320px] sm:max-w-[400px] cursor-pointer" 
+      onClick={handleCardClick}
+    >
       <Card
-        className="overflow-hidden border-0 transition-all duration-300 cursor-pointer group"
+        className="overflow-hidden border-0 transition-all duration-300 group"
         style={{
           borderRadius: "16px",
           boxShadow: "0 4px 20px rgba(0,70,193,0.1)",

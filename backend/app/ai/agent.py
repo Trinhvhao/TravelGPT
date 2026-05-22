@@ -202,6 +202,11 @@ class TravelAgent:
                 session_id, message, intent, extracted_params, memory
             )
 
+        elif intent == "search_tour":
+            response, response_metadata = await self._handle_search_tour(
+                user_id, session_id, message, extracted_params, memory
+            )
+
         elif intent == "web_search":
             response, response_metadata = await self._handle_web_search(
                 session_id, message, extracted_params, memory
@@ -637,6 +642,99 @@ Reply số hoặc nói rõ yêu cầu của bạn.""", {}
             "booking_data": result.get("booking_data")
         }
 
+    async def _handle_search_tour(
+        self,
+        user_id: str,
+        session_id: str,
+        message: str,
+        params: Dict[str, Any],
+        memory: ConversationMemory
+    ) -> tuple:
+        """
+        Handle search tour intent - search and display tours based on user criteria.
+        Returns tours as structured content for display.
+        """
+        from app.ai.tour_search import TourSearchEngine
+        from app.ai.tour_renderer import TourRenderer
+
+        memory.add_message("user", message, intent="search_tour", entities=params)
+
+        # Initialize search engine
+        search_engine = TourSearchEngine(self.db)
+        renderer = TourRenderer()
+
+        try:
+            # Search tours
+            search_params = {
+                "destination": params.get("destination"),
+                "budget": params.get("budget"),
+                "duration": params.get("duration"),
+                "category": params.get("category"),
+                "region": params.get("region"),
+            }
+
+            # Remove None values
+            search_params = {k: v for k, v in search_params.items() if v}
+
+            # Perform search
+            tours = await search_engine.search(search_params)
+
+            if tours:
+                # Format response with natural language intro
+                destination = params.get("destination") or params.get("region") or "Việt Nam"
+
+                # Natural intro based on search criteria
+                if params.get("budget"):
+                    budget_str = f"{params['budget']:,}đ" if isinstance(params['budget'], int) else params['budget']
+                    intro = f"Mình tìm được {len(tours)} tour ở {destination} trong ngân sách {budget_str} cho bạn nè! Để mình giới thiệu:"
+                elif params.get("duration"):
+                    intro = f"Đây là các tour {params['duration']} ở {destination} mình tìm được!"
+                else:
+                    intro = f"Mình tìm được {len(tours)} tour phù hợp ở {destination} cho bạn!"
+
+                # Format tours as structured data for UI rendering
+                tour_blocks = renderer.format_tours_for_display(tours)
+
+                # Add natural closing
+                closing = "\n\nBạn thấy tour nào ưng ý không? Mình có thể tư vấn chi tiết hoặc hỗ trợ đặt tour ngay nè!"
+
+                response = f"{intro}\n\n{tour_blocks}{closing}"
+
+                memory.add_message("assistant", response, intent="search_tour")
+                self.memory.add_interaction(
+                    user_id=user_id,
+                    user_message=message,
+                    assistant_response=response,
+                    metadata={"type": "search_tour", "tour_count": len(tours)}
+                )
+
+                return response, {
+                    "intent": "search_tour",
+                    "tours": [t.id for t in tours[:5]],
+                    "tour_count": len(tours)
+                }
+            else:
+                # No tours found - give natural response with suggestions
+                response = f"""Hmm, hiện tại mình chưa có tour cụ thể cho yêu cầu của bạn.
+
+Nhưng mình gợi ý được vài hướng:
+• Thử thay đổi điểm đến hoặc ngân sách
+• Liên hệ hotline để được tư vấn trực tiếp
+
+Bạn muốn thử tìm theo hướng khác không?"""
+
+                memory.add_message("assistant", response, intent="search_tour")
+
+                return response, {
+                    "intent": "search_tour",
+                    "tours": [],
+                    "tour_count": 0
+                }
+
+        except Exception as e:
+            logger.error(f"Search tour error: {e}")
+            return f"Xin lỗi, mình đang gặp chút trục trặc khi tìm tour. Bạn thử lại sau nhé!", {}
+
     async def _handle_web_search(
         self,
         session_id: str,
@@ -864,18 +962,24 @@ Reply số hoặc nói rõ yêu cầu của bạn.""", {}
         }
     
     def _fallback_response(self, params: Dict[str, Any]) -> str:
-        """Fallback response"""
+        """Fallback response - natural guide style"""
         if params.get("destination"):
-            return f"Tôi sẽ tìm tour ở {params['destination']} cho bạn. Bạn có ngân sách và thời gian cụ thể không?"
+            return f"""Để mình tìm tour ở {params['destination']} cho bạn nhé!
+
+Mình cần biết thêm vài thông tin:
+- Bạn đi mấy người, có trẻ nhỏ không?
+- Ngân sách khoảng bao nhiêu?
+- Bạn thích đi biển, núi, hay thành phố?"""
         
-        return """Tôi có thể giúp bạn:
-🔍 Tìm kiếm tour theo điểm đến, ngân sách
-📋 Đặt tour tự động
+        return """Xin chào! Mình là TravelGPT - hướng dẫn viên du lịch của bạn!
+
+Mình có thể giúp bạn:
+🔍 Tìm tour theo điểm đến, ngân sách
+📋 Đặt tour trực tiếp
 📝 Hủy hoặc đổi lịch tour
 💡 Gợi ý điểm đến phù hợp
-📋 Checklist chuẩn bị chuyến đi
 
-Bạn muốn làm gì?"""
+Bạn muốn đi đâu? Hoặc cần tư vấn gì về chuyến đi sắp tới?"""
     
     def _get_suggestions(self, intent: str, params: Dict[str, Any], user_id: str) -> List[str]:
         """Get suggestions"""

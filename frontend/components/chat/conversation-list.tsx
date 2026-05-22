@@ -9,7 +9,7 @@ import toast from "react-hot-toast";
 interface ConversationListProps {
   open: boolean;
   onClose: () => void;
-  onSelectConversation: (sessionId: string) => void;
+  onSelectConversation: (sessionId: string) => Promise<void> | void;
 }
 
 export function ConversationList({ open, onClose, onSelectConversation }: ConversationListProps) {
@@ -22,10 +22,12 @@ export function ConversationList({ open, onClose, onSelectConversation }: Conver
 
   if (!open) return null;
 
-  const handleSelect = (convSessionId: string) => {
+  const handleSelect = async (convSessionId: string) => {
     if (convSessionId === sessionId) return;
-    onSelectConversation(convSessionId);
-    onClose();
+
+    // Don't close panel yet - wait for conversation to load
+    // The parent will close it after loading completes
+    await onSelectConversation(convSessionId);
   };
 
   const openConfirmDelete = (e: React.MouseEvent, sessionIdToDelete: string) => {
