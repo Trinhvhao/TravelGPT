@@ -18,7 +18,7 @@ class AuthService:
             data={
                 "email": user_data.email,
                 "passwordHash": get_password_hash(user_data.password),
-                "full_name": user_data.full_name,
+                "fullName": user_data.full_name,
                 "phone": user_data.phone,
             }
         )

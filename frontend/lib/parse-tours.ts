@@ -86,7 +86,7 @@ export function parseToursFromMarkdown(text: string): ParsedTour[] {
 
     // Skip empty lines but save current tour if we have enough data
     if (!trimmed) {
-      if (currentTour.name && currentTour.price > 0) {
+      if (currentTour.name && currentTour.price && currentTour.price > 0) {
         tours.push(currentTour as ParsedTour);
       }
       currentTour = {};
@@ -113,7 +113,7 @@ export function parseToursFromMarkdown(text: string): ParsedTour[] {
                       trimmed.match(/^\*?\*?\d+[\.\)]\s*(.+?)(?:\s*[\|\$💰]|$)/);
     if (nameMatch && !trimmed.startsWith("📍") && !trimmed.startsWith("⏱️") && !trimmed.startsWith("💰")) {
       // If we have a previous tour, save it
-      if (currentTour.name && currentTour.price > 0) {
+      if (currentTour.name && currentTour.price && currentTour.price > 0) {
         tours.push(currentTour as ParsedTour);
       }
       currentTour = {};
@@ -157,7 +157,7 @@ export function parseToursFromMarkdown(text: string): ParsedTour[] {
   }
 
   // Don't forget the last tour
-  if (currentTour.name && currentTour.price > 0) {
+  if (currentTour.name && currentTour.price && currentTour.price > 0) {
     tours.push(currentTour as ParsedTour);
   }
 
