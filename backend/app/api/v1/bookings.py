@@ -107,6 +107,31 @@ async def create_booking(
     return BookingResponse(**convert_booking_response(booking))
 
 
+# Guest booking endpoint - no auth required, for pay later flow
+@router.post("/guest", response_model=BookingResponse)
+async def create_guest_booking(
+    data: BookingCreate,
+    db: Prisma = Depends(get_db)
+):
+    """
+    Guest booking without authentication.
+    Requires pay_later=True for hold booking without payment.
+    """
+    if not data.pay_later:
+        raise HTTPException(
+            status_code=400,
+            detail="Guest booking requires pay_later=true. For immediate booking, please login."
+        )
+    
+    booking_service = BookingService(db)
+    try:
+        booking = await booking_service.create_guest_booking(data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    return BookingResponse(**convert_booking_response(booking))
+
+
 @router.put("/{booking_id}/cancel", response_model=BookingResponse)
 async def cancel_booking(
     booking_id: str,

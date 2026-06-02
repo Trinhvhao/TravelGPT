@@ -29,6 +29,7 @@ class BookingBase(BaseModel):
     departure_date: Optional[datetime] = None
     special_requests: Optional[str] = None
     note: Optional[str] = None
+    pay_later: bool = Field(default=False, description="Pay later option - hold booking without immediate payment")
 
 
 class BookingCreate(BookingBase):

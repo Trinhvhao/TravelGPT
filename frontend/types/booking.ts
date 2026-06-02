@@ -55,6 +55,7 @@ export interface BookingCreate {
   contact_phone: string;
   departure_date?: string;
   special_requests?: string;
+  pay_later?: boolean;
 }
 
 export interface BookingUpdate {

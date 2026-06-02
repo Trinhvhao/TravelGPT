@@ -8,6 +8,7 @@ from typing import Optional
 from decimal import Decimal
 import uuid
 import logging
+import secrets
 from prisma import Prisma
 from prisma.models import Booking, Tour
 from app.schemas.booking import BookingCreate, BookingUpdate, BookingStatus, PaymentStatus
@@ -269,3 +270,80 @@ class BookingService:
                 "status": BookingStatus.CONFIRMED.value
             }
         )
+
+    async def create_guest_booking(self, booking_data: BookingCreate) -> Booking:
+        """
+        Create booking for guest user without authentication.
+        Uses pay_later=True for hold booking without immediate payment.
+        """
+        num_participants = booking_data.num_adults + booking_data.num_children
+
+        async with self.db.tx() as tx:
+            # Find or create guest user
+            guest_email = f"guest_{booking_data.contact_email}"
+            guest_user = await tx.user.find_unique(where={"email": guest_email})
+            
+            if not guest_user:
+                from app.core.security import get_password_hash
+                import secrets
+                # Create guest user
+                guest_user = await tx.user.create(
+                    data={
+                        "email": guest_email,
+                        "passwordHash": get_password_hash(secrets.token_hex(16)),
+                        "fullName": booking_data.contact_name,
+                        "phone": booking_data.contact_phone,
+                        "role": "USER",
+                        "isActive": True,
+                    }
+                )
+            
+            if booking_data.tour_id:
+                tour = await tx.tour.find_unique(where={"id": booking_data.tour_id})
+                if not tour:
+                    raise ValueError("Tour not found")
+
+                if not tour.isActive:
+                    raise ValueError("Tour is not available")
+
+                adult_price = tour.discountPrice if tour.discountPrice else tour.price
+                child_price = adult_price / 2
+                total_price = (
+                    adult_price * booking_data.num_adults +
+                    child_price * booking_data.num_children
+                )
+
+                new_participants = tour.currentParticipants + num_participants
+                if new_participants > tour.maxParticipants:
+                    raise ValueError("Tour is fully booked. Please try a different date or tour.")
+
+                await tx.tour.update(
+                    where={"id": tour.id},
+                    data={"currentParticipants": new_participants}
+                )
+            else:
+                total_price = Decimal("0")
+
+            booking_code = await self._generate_unique_booking_code()
+
+            booking = await tx.booking.create(
+                data={
+                    "userId": guest_user.id,
+                    "tourId": booking_data.tour_id,
+                    "bookingCode": booking_code,
+                    "numAdults": booking_data.num_adults,
+                    "numChildren": booking_data.num_children,
+                    "totalPrice": str(total_price),
+                    "contactName": booking_data.contact_name,
+                    "contactEmail": booking_data.contact_email,
+                    "contactPhone": booking_data.contact_phone,
+                    "departureDate": booking_data.departure_date,
+                    "specialRequests": booking_data.special_requests,
+                    "note": f"[PAY_LATER] {booking_data.note}" if booking_data.note else "[PAY_LATER] Guest booking - payment pending",
+                    "status": BookingStatus.PENDING.value,
+                    "paymentStatus": PaymentStatus.UNPAID.value
+                }
+            )
+
+            logger.info(f"Guest booking created: {booking.id} - {booking.contactEmail}")
+            return booking

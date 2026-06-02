@@ -298,8 +298,12 @@ def get_client_ip(request: Request) -> str:
 
 async def rate_limit_middleware(request: Request, call_next):
     """Middleware for global rate limiting"""
-    # Skip rate limiting for health checks
+    # Skip rate limiting for health checks and CORS preflight
     if request.url.path in ["/health", "/", "/docs", "/openapi.json"]:
+        return await call_next(request)
+    
+    # Skip CORS preflight requests
+    if request.method == "OPTIONS":
         return await call_next(request)
     
     # Get identifier

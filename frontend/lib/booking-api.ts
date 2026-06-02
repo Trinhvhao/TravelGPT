@@ -65,6 +65,14 @@ export const bookingApi = {
   },
 
   /**
+   * Create a guest booking (no auth required, pay later).
+   */
+  createGuest: async (data: BookingCreate): Promise<Booking> => {
+    const response = await api.post<Booking>("/bookings/guest", data);
+    return response.data;
+  },
+
+  /**
    * Cancel my booking (owner only).
    */
   cancel: async (id: string): Promise<Booking> => {

@@ -809,6 +809,11 @@ function BookingSidebar({
                 <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Đang xử lý...</>
               ) : spotsLeft === 0 ? (
                 "Hết chỗ"
+              ) : !hasToken ? (
+                <>
+                  <Ticket className="w-5 h-5 mr-2" />
+                  Đặt tour (Thanh toán sau)
+                </>
               ) : (
                 <>
                   <Ticket className="w-5 h-5 mr-2" />
@@ -957,32 +962,43 @@ export default function TourDetailPage() {
   }, [user, contact.name]);
 
   const handleBook = async () => {
-    if (!hasToken) {
-      router.push(`/login?redirect=/tours/${params.slug}`);
+    // Validate contact info
+    if (!contact.name || !contact.email || !contact.phone) {
+      showToast.error("Thiếu thông tin", "Vui lòng nhập đầy đủ họ tên, email và số điện thoại.");
       return;
     }
+
+    const bookingData = {
+      tour_id: tour!.id,
+      num_adults: numAdults,
+      num_children: numChildren,
+      contact_name: contact.name,
+      contact_email: contact.email,
+      contact_phone: contact.phone,
+      departure_date: contact.date || undefined,
+      special_requests: contact.requests || undefined,
+    };
+
     setSubmitting(true);
     try {
-      const price = tour!.discount_price ?? tour!.price;
-      const childPrice = price * 0.5;
-      const total = price * numAdults + childPrice * numChildren;
-      const serviceFee = Math.round(total * 0.05);
+      let booking;
 
-      const booking = await bookingApi.create({
-        tour_id: tour!.id,
-        num_adults: numAdults,
-        num_children: numChildren,
-        contact_name: contact.name,
-        contact_email: contact.email,
-        contact_phone: contact.phone,
-        departure_date: contact.date || undefined,
-        special_requests: contact.requests || undefined,
-      });
+      if (hasToken) {
+        // Authenticated user - create booking with payment
+        booking = await bookingApi.create(bookingData);
+      } else {
+        // Guest user - create booking with pay later option
+        booking = await bookingApi.createGuest({
+          ...bookingData,
+          pay_later: true,
+        });
+      }
 
       setBookingSuccess(booking.booking_code);
       showToast.success("Đặt tour thành công!", `Mã: ${booking.booking_code}`);
     } catch (err: unknown) {
-      const msg = String(err);
+      const error = err as { response?: { data?: { detail?: string } } };
+      const msg = error.response?.data?.detail || String(err);
       if (msg.toLowerCase().includes("overbook") || msg.toLowerCase().includes("full")) {
         showToast.error("Hết chỗ", "Tour này đã hết slot cho ngày bạn chọn.");
       } else {
