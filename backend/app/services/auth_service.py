@@ -1,8 +1,12 @@
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from prisma import Prisma
-from prisma.models import User
 from app.core.security import get_password_hash, verify_password, create_access_token, create_refresh_token
 from app.schemas.user import UserCreate, UserUpdate
+
+if TYPE_CHECKING:
+    from prisma.models import User
+else:
+    User = object
 
 
 class AuthService:

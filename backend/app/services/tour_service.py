@@ -1,8 +1,9 @@
-from typing import Optional
+from typing import Optional, Any
 from decimal import Decimal
 from prisma import Prisma
-from prisma.models import Tour
 from app.schemas.tour import TourFilter
+
+Tour = Any
 
 
 class TourService:

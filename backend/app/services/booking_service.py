@@ -4,14 +4,15 @@ Booking Service - Production Ready
 - Unique booking code generation with collision retry
 - Proper locking for concurrent access
 """
-from typing import Optional
+from typing import Optional, Any
 from decimal import Decimal
 import uuid
 import logging
 import secrets
 from prisma import Prisma
-from prisma.models import Booking, Tour
 from app.schemas.booking import BookingCreate, BookingUpdate, BookingStatus, PaymentStatus
+
+Booking = Any
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +82,11 @@ class BookingService:
                 )
 
                 # Check if update succeeded (row was locked by other transaction)
-                if updated.count == 0:
+                if updated == 0:
                     # Re-fetch to get current state
                     current_tour = await tx.tour.find_unique(where={"id": tour.id})
+                    if not current_tour:
+                        raise ValueError("Tour not found")
                     if current_tour.currentParticipants + num_participants > current_tour.maxParticipants:
                         raise ValueError("Tour is fully booked. Please try a different date or tour.")
                     # Race condition detected, retry by re-updating

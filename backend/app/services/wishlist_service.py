@@ -1,6 +1,11 @@
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from prisma import Prisma
-from prisma.models import TourWishlist, Tour
+
+if TYPE_CHECKING:
+    from prisma.models import TourWishlist, Tour
+else:
+    TourWishlist = object
+    Tour = object
 
 
 class WishlistService:

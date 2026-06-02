@@ -24,12 +24,12 @@ pkill -f "next.*dev" 2>/dev/null || true
 sleep 2
 
 # Activate conda and start backend
-echo -e "${GREEN}Starting Backend (port 3008)...${NC}"
+echo -e "${GREEN}Starting Backend (port 3008, auto reload)...${NC}"
 cd "$BACKEND_DIR"
 source /opt/anaconda/etc/profile.d/conda.sh 2>/dev/null || source ~/anaconda3/etc/profile.d/conda.sh 2>/dev/null
 conda activate travelgpt
 
-python -m uvicorn app.main:app --host 0.0.0.0 --port 3008 > /tmp/travelgpt_backend.log 2>&1 &
+python -m uvicorn app.main:app --host 0.0.0.0 --port 3008 --reload > /tmp/travelgpt_backend.log 2>&1 &
 BACKEND_PID=$!
 
 echo "Backend PID: $BACKEND_PID"
@@ -47,7 +47,8 @@ done
 # Start frontend
 echo -e "${GREEN}Starting Frontend (port 3002)...${NC}"
 cd "$FRONTEND_DIR"
-PORT=3002 npm run dev > /tmp/travelgpt_frontend.log 2>&1 &
+export PORT=3002
+npm run dev > /tmp/travelgpt_frontend.log 2>&1 &
 FRONTEND_PID=$!
 
 echo "Frontend PID: $FRONTEND_PID"
