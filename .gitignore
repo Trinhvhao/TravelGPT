@@ -11,3 +11,4 @@ venv/
 .venv/
 .pytest_cache/
 *.tsbuildinfo
+data/embeddings/
